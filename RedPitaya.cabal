@@ -2,7 +2,7 @@
 -- documentation, see http://haskell.org/cabal/users-guide/
 
 -- The name of the package.
-name:                redpitaya
+name:                RedPitaya
 
 -- The package version.  See the Haskell package versioning policy (PVP) 
 -- for standards guiding when and how versions should be incremented.
@@ -48,7 +48,7 @@ cabal-version:       >=1.10
 
 library
   -- Modules exported by the library.
-  exposed-modules: RedPitaya     
+  exposed-modules: RedPitaya.Rp
   
   -- Modules included in this library but not exported.
   -- other-modules:       
