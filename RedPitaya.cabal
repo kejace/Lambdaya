@@ -13,10 +13,11 @@ name:                RedPitaya
 version:             0.1.0.0
 
 -- A short (one-line) description of the package.
--- synopsis:            
+synopsis: Bindings for Open Instrument RedPitaya         
 
 -- A longer description of the package.
--- description:         
+description: This library is wrapper for rp.h and enables writing haskell apps 
+ that runs on RedPitaya (http://redpitaya.com)
 
 -- The license under which the package is released.
 license:             LGPL-3
