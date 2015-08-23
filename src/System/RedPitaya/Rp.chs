@@ -1,5 +1,5 @@
 
-module RedPitaya.Rp (
+module System.RedPitaya.Rp (
         RpMonad(..),
         DigitalPin(..), 
         PinState(..),
