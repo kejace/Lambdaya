@@ -1,45 +1,62 @@
 
 module System.RedPitaya.Rp (
         RpMonad(..),
-        DigitalPin(..), 
-        PinState(..),
-        PinDirection(..),
-        AnalogPin(..),
-        Health(..), 
-        Waveform(..), 
-        GeneratorMode(..), 
-        TriggerSource(..),
-        Channel(..), 
-        SamplingRate(..), 
-        Decimation(..), 
-        TriggerSourceAcq(..),
-        TriggerState(..), 
-        RpError(..), 
+        
+        
+        
+         
+        
+        
+        
+        
+        
+        
+        
+        
+        -- * General
         rpinit,
         reset,
         release,
         pinsReset,
         getVersion,
         getError,
+
+        -- * Digital IO
+        DigitalPin(..), 
+
+        PinState(..),
         setPinState ,
         getPinState,
+
+        PinDirection(..),
         setPinDirection ,
         getPinDirection,
+
+        -- * Analog IO
+        AnalogPin(..),
         getPinValue,
         setPinValue,
         getPinValueRaw ,
         setPinValueRaw,
         getPinRange,
+
+        Decimation(..), 
         setDecimation,
         getDecimation,
         getDecimationFactor,
+        
+        SamplingRate(..), 
         setSamplingRate,
         getSamplingRate,
         getSamplingRateHz,
         setAvaraging,
         getAvaraging,
+        
+        TriggerSource(..),
         setTriggerSrc,
         getTriggerSrc,
+        
+        TriggerState(..), 
         getTriggerState,
         getTriggerDelay,
         setTriggerDelayNs,
@@ -48,6 +65,10 @@ module System.RedPitaya.Rp (
         getTriggerLevel,
         setTriggerLevelHyst,
         getTriggerLevelHyst,
+
+        -- * Acquision 
+        Channel(..), 
+        TriggerSourceAcq(..),
         setAcqGain,
         getAcqGain,
         getAcqGainV,
@@ -63,7 +84,10 @@ module System.RedPitaya.Rp (
         getAckOldestDataV,
         getAckLatestDataV,
         getAcqBufSize,
-        getHealthValue,
+
+        -- * Generator
+        Waveform(..), 
+        GeneratorMode(..), 
         generatorReset,
         generatorOutEnable,
         generatorOutDisable,
@@ -79,7 +103,13 @@ module System.RedPitaya.Rp (
         generatorBursts,
         generatorBurstsRepetitions,
         generatorBurstsPeriod,
-        generatorTriggerSource
+        generatorTriggerSource,
+
+        -- * Health 
+        Health(..),
+        getHealthValue,
+
+        RpError(..), 
     )
 where
 
