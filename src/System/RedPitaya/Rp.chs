@@ -165,6 +165,7 @@ ft4 (a,b,c,d) = (a,(b,c,d))
 ft5 :: (a,b,c,d,e) -> (a,(b,c,d,e))
 ft5 (a,b,c,d,e) = (a,(b,c,d,e))
 
+errorMap :: (a -> (RpError,r)) -> IO a -> RpMonad r
 errorMap ftfun etup = do
     t <- liftIO etup
     let (e,res) = ftfun t
