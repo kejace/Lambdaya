@@ -1,30 +1,42 @@
 
-module RedPitaya.Rp (DigitalPin(..), PinState(..), PinDirection(..), AnalogPin(..),
-        Health(..), Waveform(..), GeneratorMode(..), TriggerSource(..),
-        Channel(..), SamplingRate(..), Decimation(..), TriggerSourceAcq(..),
-        TriggerState(..), RpError(..),
-        rpinit, 
-        reset, 
-        release, 
-        pinsReset,  
-        getVersion, 
+module RedPitaya.Rp (
+        RpMonad(..),
+        DigitalPin(..), 
+        PinState(..),
+        PinDirection(..),
+        AnalogPin(..),
+        Health(..), 
+        Waveform(..), 
+        GeneratorMode(..), 
+        TriggerSource(..),
+        Channel(..), 
+        SamplingRate(..), 
+        Decimation(..), 
+        TriggerSourceAcq(..),
+        TriggerState(..), 
+        RpError(..), 
+        rpinit,
+        reset,
+        release,
+        pinsReset,
+        getVersion,
         getError,
-        setPinState , 
-        getPinState, 
-        setPinDirection , 
+        setPinState ,
+        getPinState,
+        setPinDirection ,
         getPinDirection,
-        getPinValue, 
-        setPinValue, 
-        getPinValueRaw , 
+        getPinValue,
+        setPinValue,
+        getPinValueRaw ,
         setPinValueRaw,
-        getPinRange, 
-        setDecimation, 
-        getDecimation, 
+        getPinRange,
+        setDecimation,
+        getDecimation,
         getDecimationFactor,
         setSamplingRate,
         getSamplingRate,
         getSamplingRateHz,
-        enableAvaraging,
+        setAvaraging,
         getAvaraging,
         setTriggerSrc,
         getTriggerSrc,
@@ -81,28 +93,33 @@ import Foreign.Marshal.Array
 import Data.Functor
 import Control.Monad
 import Data.Int
+import Control.Monad.Except
 
 #c
 #include "rp.h"
 #endc
 
--- | helpers for wrapping
-mapr0 :: (a->b) ->a->b
-mapr0 = ($)  
 
--- | helpers for wrapping
+-- | main monad functions of this lib lives in
+type RpMonad = ExceptT RpError IO
+
+-- maprX maps over final return value 
+mapr0 :: (a->b) ->a->b
+mapr0 = ($)
+
 mapr1 :: (a->b) ->(c->a)->(c->b)
-mapr1 = (.)  
+mapr1 = (.)
 
 mapr2 :: (a->b) ->(c->d->a)->(c->d->b)
 mapr2 = (.) . (.)
- 
+
 mapr3 :: (a->b) ->(c->d->e->a)->(c->d->e->b)
 mapr3 = mapr2 . (.)
 
 mapr4 :: (a->b) ->(c->d->e->f->a)->(c->d->e->f->b)
 mapr4 = mapr3 . (.)
 
+-- ftX makes n-tuple 2-tuple
 ft1 :: (a) -> (a,())
 ft1 (a) = (a,())
 
@@ -118,9 +135,14 @@ ft4 (a,b,c,d) = (a,(b,c,d))
 ft5 :: (a,b,c,d,e) -> (a,(b,c,d,e))
 ft5 (a,b,c,d,e) = (a,(b,c,d,e))
 
-
-
-
+errorMap ftfun etup = do
+    t <- liftIO etup
+    let (e,res) = ftfun t
+    if (e /= Ok)
+    then
+        throwError e
+    else
+        return res
 
 
 -- | Type representing digital input output pins.
@@ -138,28 +160,39 @@ ft5 (a,b,c,d,e) = (a,(b,c,d,e))
 -- | Type representing system health information.
 {#enum rp_health_t as Health {underscoreToCase} with prefix = "RP_" deriving (Eq, Show)#}
 
--- |  Type representing shape of generated waveform
+-- | Type representing shape of generated waveform
 {#enum rp_waveform_t as Waveform {underscoreToCase} with prefix = "RP_WAVEFORM_" deriving (Eq, Show)#}
 
-
+-- | Type representing mode of generated waveform
 {#enum rp_gen_mode_t as GeneratorMode {underscoreToCase} with prefix = "RP_GEN_MODE_" deriving (Eq, Show)#}
 
+--------------------------------------------
+
+-- | Type representing source of trigger that is either ,
+-- internal, 
+-- external with positve edge, 
+-- external with negative edge, 
+-- external trigger gated burst
 {#enum rp_trig_src_t as TriggerSource {underscoreToCase} with prefix = "RP_GEN_TRIG_" deriving (Eq, Show)#}
 
--- | Type representing Input/Output channels.
+
+-- | Type representing Input Output channels.
 {#enum rp_channel_t as Channel {underscoreToCase} with prefix = "RP_" deriving (Eq, Show)#}
 
--- |  Type representing acquire signal sampling rate.
+-- | Type representing acquire signal sampling rate.
 {#enum rp_acq_sampling_rate_t as SamplingRate {underscoreToCase} with prefix = "RP_" deriving (Eq, Show)#}
 
--- |  Type representing decimation used at acquiring signal.
+
+-- | Type representing decimation used at acquiring signal.
 {#enum rp_acq_decimation_t as Decimation {underscoreToCase} with prefix = "RP_" deriving (Eq, Show)#}
 
 -- | Type representing different trigger sources used at acquiring signal.
 {#enum rp_acq_trig_src_t as TriggerSourceAcq {underscoreToCase} with prefix = "RP_TRIG_SRC_" deriving (Eq, Show)#}
 
--- | Type representing different trigger states. 
+-- | Type representing different trigger states.
 {#enum rp_acq_trig_state_t as TriggerState {underscoreToCase} with prefix = "RP_TRIG_STATE_" deriving (Eq, Show)#}
+
+
 
 -- | Type representing errors returend by each function
 {#enum define RpError {
@@ -196,164 +229,252 @@ peekEnum :: Enum a => Ptr CInt -> IO a
 peekEnum =  peekMap (toEnum . fromIntegral )
 
 peekInt :: (Integral a , Storable a) => Ptr a -> IO Integer
-peekInt =  peekMap  toInteger 
+peekInt =  peekMap  toInteger
 
 peekBool :: (Integral a , Storable a) => Ptr a -> IO Bool
-peekBool =  peekMap  (/= 0) 
+peekBool =  peekMap  (/= 0)
 
 -- | Initializes the library. It must be called first, before any other library method.
-{#fun rp_Init as rpinit  {} -> `RpError' #}
+rpinit :: RpMonad ()
+rpinit = mapr0 ( errorMap ft1) rp_Init
+{#fun rp_Init  {} -> `RpError' #}
+
 
 -- | Resets all modules. Typically called after `rpinit`
-{#fun rp_Reset as reset  {} -> `RpError' #}
+reset :: RpMonad ()
+reset = mapr0 ( errorMap ft1) rp_Reset
+{#fun rp_Reset {} -> `RpError' #}
 
 -- | Releases the library resources. It must be called last, after library is not used anymore. Typically before
 -- application exits.
-{#fun rp_Release as release  {} -> `RpError' #}
+release :: RpMonad ()
+release = mapr0 ( errorMap ft1) rp_Release
+{#fun rp_Release {} -> `RpError' #}
 
--- |  Sets digital pins to default values. Pins DIO1_P - DIO7_P, RP_DIO0_N - RP_DIO7_N are set al OUTPUT and to LOW. LEDs are set to LOW/OFF
-{#fun rp_DpinReset as pinsReset  {} -> `RpError' #}
+-- | Sets digital pins to default values. Pins DIO1_P - DIO7_P, RP_DIO0_N - RP_DIO7_N are set al OUTPUT and to LOW. LEDs are set to LOW/OFF
+pinsReset :: RpMonad ()
+pinsReset = mapr0 ( errorMap ft1) rp_DpinReset
+{#fun rp_DpinReset {} -> `RpError' #}
 
 -- | Retrieves the library librp version number
-{#fun rp_GetVersion as getVersion  {} -> `String' #}
+getVersion :: RpMonad String
+getVersion = liftIO rp_GetVersion
+{#fun rp_GetVersion  {} -> `String' #}
 
 -- | textual representation of error code
 {#fun rp_GetError as getError  {`RpError'} -> `String' #}
 
-----------------------------------------------------------------
 
--- |  Sets digital pins to default values. Pins DIO1_P - DIO7_P, RP_DIO0_N - RP_DIO7_N are set al OUTPUT and to LOW. LEDs are set to LOW/OFF
-{#fun rp_DpinSetState as setPinState { `DigitalPin' , `PinState' } -> `RpError' #}
+-- | Sets digital pins to default values. Pins DIO1_P - DIO7_P, RP_DIO0_N - RP_DIO7_N are set al OUTPUT and to LOW. LEDs are set to LOW/OFF
+setPinState :: DigitalPin -> PinState -> RpMonad ()
+setPinState = mapr2 ( errorMap ft1) rp_DpinSetState
+{#fun rp_DpinSetState { `DigitalPin' , `PinState' } -> `RpError' #}
 
-{#fun rp_DpinGetState as getPinState { `DigitalPin' ,  alloca- `PinState' peekEnum* } -> `RpError' #}
+-- | Get pins enabled values
+getPinState :: DigitalPin -> RpMonad PinState
+getPinState = mapr1 ( errorMap ft2) rp_DpinGetState
+{#fun rp_DpinGetState { `DigitalPin' ,  alloca- `PinState' peekEnum* } -> `RpError' #}
+
+
+
 
 -- | Sets digital input output pin direction. LED pins are already automatically set to the output direction,
 -- and they cannot be set to the input direction. DIOx_P and DIOx_N are must set either output or input direction
 -- before they can be used. When set to input direction, it is not allowed to write into these pins.
-{#fun rp_DpinSetDirection as setPinDirection { `DigitalPin' , `PinDirection' } -> `RpError' #}
-{#fun rp_DpinGetDirection as getPinDirection { `DigitalPin' , alloca- `PinDirection' peekEnum* } -> `RpError' #}
+setPinDirection :: DigitalPin -> PinDirection -> RpMonad ()
+setPinDirection = mapr2 ( errorMap ft1) rp_DpinSetDirection
+{#fun rp_DpinSetDirection { `DigitalPin' , `PinDirection' } -> `RpError' #}
+
+-- gets digital input output pin direction
+getPinDirection :: DigitalPin  -> RpMonad PinDirection
+getPinDirection = mapr1 ( errorMap ft2) rp_DpinGetDirection
+{#fun rp_DpinGetDirection { `DigitalPin' , alloca- `PinDirection' peekEnum* } -> `RpError' #}
 
 -- | Sets analog pins to default values. Output pins are set to 0 V.
-{#fun rp_ApinReset as analogPinsReset  {} -> `RpError' #}
+analogPinsReset ::  RpMonad ()
+analogPinsReset = mapr0 ( errorMap ft1) rp_ApinReset
+{#fun rp_ApinReset  {} -> `RpError' #}
+
 
 -- | Gets value from analog pin in volts.
-{#fun rp_ApinGetValue as getPinValue { `AnalogPin' ,  alloca- `CFloat' peek* } -> `RpError' #}
+getPinValue ::  AnalogPin -> RpMonad CFloat
+getPinValue = mapr1 ( errorMap ft2) rp_ApinGetValue
+{#fun rp_ApinGetValue  { `AnalogPin' ,  alloca- `CFloat' peek* } -> `RpError' #}
 
 -- | Gets raw value from analog pin.
-{#fun rp_ApinGetValueRaw as getPinValueRaw { `AnalogPin' ,  alloca- `Integer' peekInt* } -> `RpError' #}
+getPinValueRaw ::  AnalogPin -> RpMonad Integer
+getPinValueRaw = mapr1 ( errorMap ft2) rp_ApinGetValueRaw
+{#fun rp_ApinGetValueRaw  { `AnalogPin' ,  alloca- `Integer' peekInt* } -> `RpError' #}
 
 -- | Sets value in volts on analog output pin
-{#fun rp_ApinSetValue as setPinValue { `AnalogPin' ,  `CFloat'} -> `RpError' #}
+setPinValue ::  AnalogPin -> CFloat -> RpMonad ()
+setPinValue = mapr2 ( errorMap ft1) rp_ApinSetValue
+{#fun rp_ApinSetValue { `AnalogPin' ,  `CFloat'} -> `RpError' #}
 
 -- | Sets raw value on analog output pin.
-{#fun rp_ApinSetValueRaw as setPinValueRaw { `AnalogPin' , `Int'} -> `RpError' #}
+setPinValueRaw ::  AnalogPin -> Int -> RpMonad ()
+setPinValueRaw = mapr2 ( errorMap ft1) rp_ApinSetValueRaw
+{#fun rp_ApinSetValueRaw { `AnalogPin' , `Int'} -> `RpError' #}
 
 -- | Gets range in volts on specific pin
-{#fun rp_ApinGetRange as getPinRange { `AnalogPin' ,  alloca- `CFloat' peek* ,  alloca- `CFloat' peek* } -> `RpError' #}
+getPinRange ::  AnalogPin ->  RpMonad (CFloat,CFloat)
+getPinRange = mapr1 ( errorMap ft3) rp_ApinGetRange
+{#fun rp_ApinGetRange  { `AnalogPin' ,  alloca- `CFloat' peek* ,  alloca- `CFloat' peek* } -> `RpError' #}
 
---------------------------------------------------------------------------------
 
 -- | Sets the decimation used at acquiring signal. There is only a set of pre-defined decimation
-{#fun rp_AcqSetDecimation as setDecimation  {`Decimation'} -> `RpError' #}
+setDecimation ::  Decimation ->  RpMonad ()
+setDecimation = mapr1 ( errorMap ft1) rp_AcqSetDecimation
+{#fun rp_AcqSetDecimation {`Decimation'} -> `RpError' #}
+
 -- | Gets the decimation used at acquiring signal.
-{#fun rp_AcqGetDecimation as getDecimation  {alloca- `Decimation' peekEnum*} -> `RpError' #}
+getDecimation ::  RpMonad Decimation
+getDecimation = mapr0 ( errorMap ft2) rp_AcqGetDecimation
+{#fun rp_AcqGetDecimation  {alloca- `Decimation' peekEnum*} -> `RpError' #}
 
 -- | Gets the decimation factor used at acquiring signal in a numerical form.
-{#fun rp_AcqGetDecimationFactor as getDecimationFactor {alloca- `Integer' peekInt*} -> `RpError' #}
+getDecimationFactor ::  RpMonad Integer
+getDecimationFactor = mapr0 ( errorMap ft2) rp_AcqGetDecimationFactor
+{#fun rp_AcqGetDecimationFactor {alloca- `Integer' peekInt*} -> `RpError' #}
 
 -- | Sets the sampling rate for acquiring signal.
-{#fun rp_AcqSetSamplingRate as setSamplingRate  {`SamplingRate'} -> `RpError' #}
+setSamplingRate ::  SamplingRate -> RpMonad ()
+setSamplingRate = mapr1 ( errorMap ft1) rp_AcqSetSamplingRate
+{#fun rp_AcqSetSamplingRate  {`SamplingRate'} -> `RpError' #}
 
 -- | Gets the sampling rate for acquiring signal
-{#fun rp_AcqGetSamplingRate as getSamplingRate { alloca- `SamplingRate' peekEnum* } -> `RpError' #}
+getSamplingRate ::  RpMonad SamplingRate
+getSamplingRate = mapr0 ( errorMap ft2) rp_AcqGetSamplingRate
+{#fun rp_AcqGetSamplingRate { alloca- `SamplingRate' peekEnum* } -> `RpError' #}
 
---------------------------------------------------------------------------------
 -- | Gets the sampling rate for acquiring signal in a numerical form in Hz. Although this method returns a float
 -- value representing the current value of the sampling rate, there is only a set of pre-defined sampling rate
--- values which can be returned. 
-{#fun rp_AcqGetSamplingRateHz as getSamplingRateHz { alloca- `CFloat' peek* } -> `RpError' #}
+-- values which can be returned.
+getSamplingRateHz ::  RpMonad CFloat
+getSamplingRateHz = mapr0 ( errorMap ft2) rp_AcqGetSamplingRateHz
+{#fun rp_AcqGetSamplingRateHz  { alloca- `CFloat' peek* } -> `RpError' #}
 
 -- | Enables or disables averaging of data between samples.
 -- Data between samples can be averaged by setting the averaging flag in the Data decimation register.
-{#fun rp_AcqSetAveraging as enableAvaraging  {`Bool'} -> `RpError' #}
+setAvaraging ::  Bool -> RpMonad ()
+setAvaraging = mapr1 ( errorMap ft1) rp_AcqSetAveraging
+{#fun rp_AcqSetAveraging   {`Bool'} -> `RpError' #}
 
 -- | Returns information if averaging of data between samples is enabled or disabled.
-{#fun rp_AcqGetAveraging as getAvaraging  { alloca- `Bool' peekBool*} -> `RpError' #}
+getAvaraging ::  RpMonad Bool
+getAvaraging = mapr0 ( errorMap ft2) rp_AcqGetAveraging
+{#fun rp_AcqGetAveraging   { alloca- `Bool' peekBool*} -> `RpError' #}
 
 -- | Sets the trigger source used at acquiring signal. When acquiring is started,
 -- the FPGA waits for the trigger condition on the specified source and when the condition is met, it
 -- starts writing the signal to the buffer.
-{#fun rp_AcqSetTriggerSrc as setTriggerSrc  {`TriggerSource'} -> `RpError' #}
+setTriggerSrc :: TriggerSource -> RpMonad ()
+setTriggerSrc = mapr1 ( errorMap ft1) rp_AcqSetTriggerSrc
+{#fun rp_AcqSetTriggerSrc {`TriggerSource'} -> `RpError' #}
 
 -- | Gets the trigger source used at acquiring signal.
-{#fun rp_AcqGetTriggerSrc as getTriggerSrc  {alloca- `TriggerSource' peekEnum*} -> `RpError' #}
+getTriggerSrc :: RpMonad TriggerSource
+getTriggerSrc = mapr0 ( errorMap ft2) rp_AcqGetTriggerSrc
+{#fun rp_AcqGetTriggerSrc {alloca- `TriggerSource' peekEnum*} -> `RpError' #}
 
--- |  Returns the trigger state. Either it is waiting for a trigger to happen, or it has already been triggered.
+-- | Returns the trigger state. Either it is waiting for a trigger to happen, or it has already been triggered.
 -- By default it is in the triggered state, which is treated the same as disabled.
-{#fun rp_AcqGetTriggerState as getTriggerState  {alloca- `TriggerState' peekEnum*} -> `RpError' #}
+getTriggerState :: RpMonad TriggerState
+getTriggerState = mapr0 ( errorMap ft2) rp_AcqGetTriggerState
+{#fun rp_AcqGetTriggerState {alloca- `TriggerState' peekEnum*} -> `RpError' #}
 
 -- | Sets the number of decimated data after trigger written into memory
-{#fun rp_AcqSetTriggerDelay as setTriggerDelay  { `Int' } -> `RpError' #}
+setTriggerDelay :: Integer -> RpMonad ()
+setTriggerDelay = mapr1 ( errorMap ft1) rp_AcqSetTriggerDelay
+{#fun rp_AcqSetTriggerDelay  { fromIntegral `Integer' } -> `RpError' #}
 
 -- | Returns current number of decimated data after trigger written into memory.
-{#fun rp_AcqGetTriggerDelay as getTriggerDelay  { alloca- `Integer' peekInt* } -> `RpError' #}
+getTriggerDelay ::  RpMonad Integer
+getTriggerDelay = mapr0 ( errorMap ft2) rp_AcqGetTriggerDelay
+{#fun rp_AcqGetTriggerDelay { alloca- `Integer' peekInt* } -> `RpError' #}
 
 -- | Sets the amount of decimated data in nanoseconds after trigger written into memory.
-{#fun rp_AcqSetTriggerDelayNs as setTriggerDelayNs  { fromIntegral `Integer'  } -> `RpError' #}
+setTriggerDelayNs ::  Integer -> RpMonad ()
+setTriggerDelayNs = mapr1 ( errorMap ft1) rp_AcqSetTriggerDelayNs
+{#fun rp_AcqSetTriggerDelayNs { fromIntegral `Integer'  } -> `RpError' #}
 
 -- | Returns the current amount of decimated data in nanoseconds after trigger written into memory.
-{#fun rp_AcqGetTriggerDelayNs as getTriggerDelayNs  { alloca- `Integer' peekInt* } -> `RpError' #}
+getTriggerDelayNs ::  RpMonad Integer
+getTriggerDelayNs = mapr0 ( errorMap ft2) rp_AcqGetTriggerDelayNs
+{#fun rp_AcqGetTriggerDelayNs { alloca- `Integer' peekInt* } -> `RpError' #}
 
 -- | Sets the trigger threshold value in volts. Makes the trigger when ADC value crosses this value.
-{#fun rp_AcqSetTriggerLevel as setTriggerLevel  { `CFloat' } -> `RpError' #}
+setTriggerLevel ::  CFloat -> RpMonad ()
+setTriggerLevel = mapr1 ( errorMap ft1) rp_AcqSetTriggerLevel
+{#fun rp_AcqSetTriggerLevel { `CFloat' } -> `RpError' #}
 
 -- | Gets currently set trigger threshold value in volts
-{#fun rp_AcqGetTriggerLevel as getTriggerLevel  { alloca- `CFloat' peek* } -> `RpError' #}
+getTriggerLevel ::  RpMonad CFloat
+getTriggerLevel = mapr0 ( errorMap ft2) rp_AcqGetTriggerLevel
+{#fun rp_AcqGetTriggerLevel { alloca- `CFloat' peek* } -> `RpError' #}
 
--- |  Sets the trigger threshold hysteresis value in volts.
+-- | Sets the trigger threshold hysteresis value in volts.
 -- Value must be outside to enable the trigger again.
-{#fun rp_AcqSetTriggerHyst as setTriggerLevelHyst  { `CFloat' } -> `RpError' #}
+setTriggerLevelHyst ::  CFloat -> RpMonad ()
+setTriggerLevelHyst = mapr1 ( errorMap ft1) rp_AcqSetTriggerHyst
+{#fun rp_AcqSetTriggerHyst { `CFloat' } -> `RpError' #}
 
 -- | Gets currently set trigger threshold hysteresis value in volts
-{#fun rp_AcqGetTriggerHyst as getTriggerLevelHyst  { alloca- `CFloat' peek* } -> `RpError' #}
+getTriggerLevelHyst :: RpMonad CFloat
+getTriggerLevelHyst = mapr0 ( errorMap ft2) rp_AcqGetTriggerHyst
+{#fun rp_AcqGetTriggerHyst { alloca- `CFloat' peek* } -> `RpError' #}
 
 -- | Sets the acquire gain state. The gain should be set to the same value as it is set on the Red Pitaya
-{#fun rp_AcqSetGain as setAcqGain { `Channel' , `PinState' } -> `RpError' #}
+setAcqGain :: Channel -> PinState -> RpMonad ()
+setAcqGain = mapr2 ( errorMap ft1) rp_AcqSetGain
+{#fun rp_AcqSetGain { `Channel' , `PinState' } -> `RpError' #}
 
 -- | Returns the currently set acquire gain state in the library. It may not be set to the same value as
 -- it is set on the Red Pitaya hardware by the LV/HV gain jumpers. LV = 1V; HV = 20V.
-{#fun rp_AcqGetGain as getAcqGain { `Channel' , alloca- `PinState' peekEnum* } -> `RpError' #}
+getAcqGain :: Channel -> RpMonad PinState
+getAcqGain = mapr1 ( errorMap ft2) rp_AcqGetGain
+{#fun rp_AcqGetGain { `Channel' , alloca- `PinState' peekEnum* } -> `RpError' #}
 
 -- | Returns the currently set acquire gain in the library. It may not be set to the same value as
 -- it is set on the Red Pitaya hardware by the LV/HV gain jumpers. Returns value in Volts.
-{#fun rp_AcqGetGainV as getAcqGainV { `Channel' , alloca- `CFloat' peek* } -> `RpError' #}
+getAcqGainV :: Channel -> RpMonad CFloat
+getAcqGainV = mapr1 ( errorMap ft2) rp_AcqGetGainV
+{#fun rp_AcqGetGainV { `Channel' , alloca- `CFloat' peek* } -> `RpError' #}
 
--- |  Returns current position of ADC write pointer.
-{#fun rp_AcqGetWritePointer as getAcqWritePointer { alloca- `Integer' peekInt* } -> `RpError' #}
+-- | Returns current position of ADC write pointer.
+getAcqWritePointer :: RpMonad Integer
+getAcqWritePointer = mapr0 ( errorMap ft2) rp_AcqGetWritePointer
+{#fun rp_AcqGetWritePointer { alloca- `Integer' peekInt* } -> `RpError' #}
 
 -- | Returns position of ADC write pointer at time when trigger arrived.
-{#fun rp_AcqGetWritePointerAtTrig as getAcqWritePointerAtTrg { alloca- `Integer' peekInt* } -> `RpError' #}
+getAcqWritePointerAtTrg :: RpMonad Integer
+getAcqWritePointerAtTrg = mapr0 ( errorMap ft2) rp_AcqGetWritePointerAtTrig
+{#fun rp_AcqGetWritePointerAtTrig { alloca- `Integer' peekInt* } -> `RpError' #}
 
 -- | Starts the acquire. Signals coming from the input channels are acquired and written into memory.
-{#fun rp_AcqStart as acqStart {} -> `RpError' #}
+acqStart :: RpMonad ()
+acqStart = mapr0 ( errorMap ft1) rp_AcqStart
+{#fun rp_AcqStart {} -> `RpError' #}
 
 -- | Resets the acquire writing state machine.
-{#fun rp_AcqReset as acqReset {} -> `RpError' #}
+acqReset :: RpMonad ()
+acqReset = mapr0 ( errorMap ft1) rp_AcqReset
+{#fun rp_AcqReset {} -> `RpError' #}
 
 
 -- | Normalizes the ADC buffer position. Returns the modulo operation of ADC buffer size...
-{#fun rp_AcqGetNormalizedDataPos as getNormalisedDataPosition { fromIntegral `Integer'  } ->  `Integer' fromIntegral #}
-
-
+getNormalisedDataPosition :: Integer -> RpMonad Integer
+getNormalisedDataPosition = liftIO . rp_AcqGetNormalizedDataPos
+{#fun rp_AcqGetNormalizedDataPos { fromIntegral `Integer' } ->  `Integer' fromIntegral #}
 
 getPosSizeBufferHelper :: (Storable a) => (CInt -> (CUInt -> ((Ptr CUInt) -> ((Ptr a) -> (IO CInt))))) -> Channel -> Int -> Int -> IO ( RpError , [a])
-getPosSizeBufferHelper ffiFunc chan pos size = allocaArray  (fromIntegral size)  $ 
+getPosSizeBufferHelper ffiFunc chan pos size = allocaArray  (fromIntegral size)  $
     \bufptr -> alloca $
         \sizeptr ->  do
             let echan  = fromIntegral $ fromEnum chan
             let ipos = fromIntegral pos
             err <- ffiFunc echan ipos sizeptr bufptr
-            if (err /= 0) then 
+            if (err /= 0) then
                 do
                     len <- peek  sizeptr
                     arr <- peekArray (fromIntegral len) bufptr
@@ -361,13 +482,13 @@ getPosSizeBufferHelper ffiFunc chan pos size = allocaArray  (fromIntegral size) 
             else return ( toEnum $ fromIntegral err , [])
 
 getSizeBufferHelper :: (Storable a) => (CInt -> Ptr CUInt -> Ptr a -> IO CInt) -> Int -> Channel -> IO ( RpError , [a])
-getSizeBufferHelper ffiFunc allocSize chan = allocaArray  allocSize $ 
+getSizeBufferHelper ffiFunc allocSize chan = allocaArray  allocSize $
     \bufptr -> alloca $
         \sizeptr ->  do
             let echan  = fromIntegral $ fromEnum chan
             _ <- poke sizeptr (fromIntegral allocSize)
             err <- ffiFunc echan sizeptr bufptr
-            if (err /= 0) then 
+            if (err /= 0) then
                 do
                     len <- peek  sizeptr
                     arr <- peekArray (fromIntegral len) bufptr
@@ -376,99 +497,138 @@ getSizeBufferHelper ffiFunc allocSize chan = allocaArray  allocSize $
 
 
 -- | get raw ADC data from channel passing position and size
-getAckDataRaw :: Channel -> Int -> Int -> IO ( RpError , [CShort])
-getAckDataRaw = getPosSizeBufferHelper {#call rp_AcqGetDataRaw#}
+getAckDataRaw :: Channel -> Int -> Int -> RpMonad [CShort]
+getAckDataRaw = mapr3 ( errorMap ft2) $ getPosSizeBufferHelper {#call rp_AcqGetDataRaw#}
 
 -- | get  ADC data Voltage from channel passing position and size
-getAckDataV :: Channel -> Int -> Int -> IO ( RpError , [CFloat])
-getAckDataV = getPosSizeBufferHelper {#call rp_AcqGetDataV#}
+getAckDataV :: Channel -> Int -> Int -> RpMonad [CFloat]
+getAckDataV = mapr3 ( errorMap ft2) $ getPosSizeBufferHelper {#call rp_AcqGetDataV#}
 
 -- | Returns the ADC buffer in raw units from the oldest sample to the newest one.
 -- First parameter is maximal length of returned data (how large buffer to allocate)
-getAckOldestDataRaw :: Int -> Channel ->  IO ( RpError , [CShort])
-getAckOldestDataRaw = getSizeBufferHelper {#call rp_AcqGetOldestDataRaw#}
+getAckOldestDataRaw :: Int -> Channel ->  RpMonad [CShort]
+getAckOldestDataRaw = mapr2 ( errorMap ft2) $ getSizeBufferHelper {#call rp_AcqGetOldestDataRaw#}
 
 -- | Returns the ADC buffer in raw units from the latest
 -- First parameter is maximal length of returned data (how large buffer to allocate)
-getAckLatestDataRaw :: Int -> Channel ->  IO ( RpError , [CShort])
-getAckLatestDataRaw = getSizeBufferHelper {#call rp_AcqGetLatestDataRaw#}
+getAckLatestDataRaw :: Int -> Channel ->  RpMonad [CShort]
+getAckLatestDataRaw = mapr2 ( errorMap ft2) $ getSizeBufferHelper {#call rp_AcqGetLatestDataRaw#}
 
 -- | Returns the ADC buffer in volts from the oldest sample to the newest one.
 -- First parameter is maximal length of returned list (how large buffer to allocate)
-getAckOldestDataV :: Int -> Channel ->  IO ( RpError , [CFloat])
-getAckOldestDataV = getSizeBufferHelper {#call rp_AcqGetOldestDataV#}
+getAckOldestDataV :: Int -> Channel ->  RpMonad [CFloat]
+getAckOldestDataV = mapr2 ( errorMap ft2) $ getSizeBufferHelper {#call rp_AcqGetOldestDataV#}
 
 -- | Returns the ADC buffer in volts from the latest
 -- First parameter is maximal length of returned list (how large buffer to allocate)
-getAckLatestDataV :: Int -> Channel ->  IO ( RpError , [CFloat])
-getAckLatestDataV = getSizeBufferHelper {#call rp_AcqGetLatestDataV#}
+getAckLatestDataV :: Int -> Channel ->  RpMonad [CFloat]
+getAckLatestDataV = mapr2 ( errorMap ft2) $  getSizeBufferHelper {#call rp_AcqGetLatestDataV#}
 
-{#fun rp_AcqGetBufSize  as getAcqBufSize { alloca- `Integer' peekInt* } -> `RpError' #}
+-- | Returns size of acquistion buffer
+getAcqBufSize :: RpMonad Integer
+getAcqBufSize = mapr0 ( errorMap ft2) rp_AcqGetBufSize
+{#fun rp_AcqGetBufSize { alloca- `Integer' peekInt* } -> `RpError' #}
 
--- |  Gets data about system health like temperature
-{#fun rp_HealthGetValue as getHealthValue { `Health' ,  alloca- `CFloat' peek* } -> `RpError' #}
+-- | Gets data about system health
+getHealthValue :: Health -> RpMonad CFloat
+getHealthValue = mapr1 ( errorMap ft2) rp_HealthGetValue
+{#fun rp_HealthGetValue { `Health' ,  alloca- `CFloat' peek* } -> `RpError' #}
 
 -- | Sets generate to default values.
-{#fun rp_GenReset as generatorReset  {} -> `RpError' #}
+generatorReset ::  RpMonad ()
+generatorReset = mapr0 ( errorMap ft1) rp_GenReset
+{#fun rp_GenReset {} -> `RpError' #}
 
 -- | Enables output
-{#fun rp_GenOutEnable as generatorOutEnable  {`Channel'} -> `RpError' #}
+generatorOutEnable ::  Channel -> RpMonad ()
+generatorOutEnable = mapr1 ( errorMap ft1) rp_GenOutEnable
+{#fun rp_GenOutEnable {`Channel'} -> `RpError' #}
 
 -- | Disables output
-{#fun rp_GenOutDisable as generatorOutDisable  {`Channel'} -> `RpError' #}
+generatorOutDisable ::  Channel -> RpMonad ()
+generatorOutDisable = mapr1 ( errorMap ft1) rp_GenOutDisable
+{#fun rp_GenOutDisable {`Channel'} -> `RpError' #}
 
--- | Gets value true if channel is enabled otherwise return false.
-{#fun rp_GenOutIsEnabled as generatorOutIsEnabled  {`Channel', alloca- `Bool' peekBool*} -> `RpError' #}
+-- | Gets value `True` if channel is enabled otherwise return `False`
+generatorOutIsEnabled ::   Channel -> RpMonad Bool
+generatorOutIsEnabled = mapr1 ( errorMap ft2) rp_GenOutIsEnabled
+{#fun rp_GenOutIsEnabled {`Channel', alloca- `Bool' peekBool*} -> `RpError' #}
 
 -- | Sets channel signal peak to peak amplitude.
-{#fun rp_GenAmp as generatorAmp {`Channel' , `CFloat' } -> `RpError' #}
+generatorAmp ::   Channel -> CFloat -> RpMonad ()
+generatorAmp = mapr2 ( errorMap ft1) rp_GenAmp
+{#fun rp_GenAmp {`Channel' , `CFloat' } -> `RpError' #}
 
 -- | gets channel signal peak to peak amplitude
-{#fun rp_GenGetAmp as getGeneratorAmp {`Channel' , alloca- `CFloat' peek* } -> `RpError' #}
+getGeneratorAmp ::   Channel -> RpMonad CFloat
+getGeneratorAmp = mapr1 ( errorMap ft2) rp_GenGetAmp
+{#fun rp_GenGetAmp {`Channel' , alloca- `CFloat' peek* } -> `RpError' #}
 
 
 -- | Sets DC offset of the signal. signal = signal + DC_offset.
-{#fun rp_GenOffset as setGeneratorOffset {`Channel' , `CFloat' } -> `RpError' #}
+setGeneratorOffset ::   Channel -> CFloat -> RpMonad ()
+setGeneratorOffset = mapr2 ( errorMap ft1) rp_GenOffset
+{#fun rp_GenOffset {`Channel' , `CFloat' } -> `RpError' #}
 
 -- | Sets channel signal frequency.
-{#fun rp_GenFreq as generatorFrequency {`Channel' , `CFloat' } -> `RpError' #}
+generatorFrequency ::   Channel -> CFloat -> RpMonad ()
+generatorFrequency = mapr2 ( errorMap ft1) rp_GenFreq
+{#fun rp_GenFreq {`Channel' , `CFloat' } -> `RpError' #}
 
 -- | Sets channel signal phase. This shifts the signal in time.
-{#fun rp_GenPhase as generatorPhase {`Channel' , `CFloat' } -> `RpError' #}
+generatorPhase ::   Channel -> CFloat -> RpMonad ()
+generatorPhase = mapr2 ( errorMap ft1) rp_GenPhase
+{#fun rp_GenPhase {`Channel' , `CFloat' } -> `RpError' #}
 
 
 -- | Sets channel signal phase. This shifts the signal in time.
-{#fun rp_GenWaveform as generatorWaveForm {`Channel' , `Waveform' } -> `RpError' #}
+generatorWaveForm ::   Channel -> Waveform -> RpMonad ()
+generatorWaveForm = mapr2 ( errorMap ft1) rp_GenWaveform
+{#fun rp_GenWaveform  {`Channel' , `Waveform' } -> `RpError' #}
 
 
 setBufferHelper :: (Storable a,Integral i) => (Ptr a -> i -> IO r) -> [a] -> IO r
 setBufferHelper fun xs = withArrayLen xs (\i p -> fun p (fromIntegral i))
 
-
 -- | Sets user defined waveform
-generatorArbWaveForm :: Channel -> [CFloat] -> IO RpError
-generatorArbWaveForm c xs = (toEnum . fromIntegral) <$>
-            setBufferHelper ({#call rp_GenArbWaveform #} 
-            ((fromIntegral . fromEnum) c)) xs 
+generatorArbWaveForm ::   Channel -> [CFloat] -> RpMonad ()
+generatorArbWaveForm = mapr2 ( errorMap ft1) gawf
+    where 
+            gawf :: Channel -> [CFloat] -> IO RpError
+            gawf c xs = (toEnum . fromIntegral) <$>
+                setBufferHelper ({#call rp_GenArbWaveform #}
+                ((fromIntegral . fromEnum) c)) xs
 
 
 -- | Sets duty cycle of PWM signal.
-{#fun rp_GenDutyCycle as generatorDutyCycle {`Channel' , `CFloat' } -> `RpError' #}
+generatorDutyCycle ::   Channel -> CFloat -> RpMonad ()
+generatorDutyCycle = mapr2 ( errorMap ft1) rp_GenDutyCycle
+{#fun rp_GenDutyCycle {`Channel' , `CFloat' } -> `RpError' #}
 
--- | Sets generation mode. 
-{#fun rp_GenMode as generatorMode {`Channel' , `GeneratorMode' } -> `RpError' #}
+-- | Sets generation mode.
+generatorMode ::   Channel -> GeneratorMode -> RpMonad ()
+generatorMode = mapr2 ( errorMap ft1) rp_GenMode
+{#fun rp_GenMode {`Channel' , `GeneratorMode' } -> `RpError' #}
 
 -- | Sets number of generated waveforms in a burst. If -1 a continuous signal will be generated.
-{#fun rp_GenBurstCount as generatorBursts {`Channel' , fromInteger `Integer' } -> `RpError' #}
+generatorBursts ::   Channel -> Integer -> RpMonad ()
+generatorBursts = mapr2 ( errorMap ft1) rp_GenBurstCount
+{#fun rp_GenBurstCount {`Channel' , fromInteger `Integer' } -> `RpError' #}
 
 -- | Sets number of burst repetitions. This determines how many bursts will be generated.
 -- If -1 a continuous signal will be generated.
-{#fun rp_GenBurstRepetitions as generatorBurstsRepetitions {`Channel' , fromInteger `Integer' } -> `RpError' #}
+generatorBurstsRepetitions ::   Channel -> Integer -> RpMonad ()
+generatorBurstsRepetitions = mapr2 ( errorMap ft1) rp_GenBurstRepetitions
+{#fun rp_GenBurstRepetitions {`Channel' , fromInteger `Integer' } -> `RpError' #}
 
 
 -- | Sets the time/period of one burst in micro seconds. Period must be equal or greater then the time of one burst.
 -- If it is greater than the difference will be the delay between two consequential bursts.
-{#fun rp_GenBurstPeriod as generatorBurstsPeriod {`Channel' , fromInteger `Integer' } -> `RpError' #}
+generatorBurstsPeriod ::   Channel -> Integer -> RpMonad ()
+generatorBurstsPeriod = mapr2 ( errorMap ft1) rp_GenBurstPeriod
+{#fun rp_GenBurstPeriod {`Channel' , fromInteger `Integer' } -> `RpError' #}
 
 -- | Sets trigger source.
-{#fun rp_GenTriggerSource as generatorTriggerSource {`Channel' , `TriggerSource' } -> `RpError' #}
+generatorTriggerSource ::   Channel -> TriggerSource -> RpMonad ()
+generatorTriggerSource = mapr2 ( errorMap ft1) rp_GenTriggerSource
+{#fun rp_GenTriggerSource {`Channel' , `TriggerSource' } -> `RpError' #}
