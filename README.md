@@ -96,3 +96,25 @@ cp `~./.cabal/config` in this dir and then modify config file.
     cabal --with-confif=CONFIGFILE install redpitaya
 
 again make sure that `jobs` is set on 1
+also cabal uses strip by default on libraries when using config file 
+
+
+relevant configs in /home/user/.cabal-arm/config
+
+    remote-repo: hackage.haskell.org:http://hackage.haskell.org/packages/archive
+    remote-repo-cache: /home/user/.cabal-arm/packages
+    world-file: /home/user/.cabal-arm/world
+    verbose: 3
+    with-compiler: arm-unknown-linux-gnueabi-ghc
+    with-hc-pkg: /usr/local/bin/arm-unknown-linux-gnueabi-ghc-pkg
+    executable-stripping: False
+    library-stripping: False
+    extra-prog-path: /home/user/.cabal-arm/bin
+    build-summary: /home/user/.cabal-arm/logs/build.log
+    remote-build-reporting: anonymous
+    jobs: 1
+
+    program-locations
+        ld-location: arm-linux-gnueabi-ld
+        strip-location: arm-linux-gnueabi-ld
+
