@@ -80,9 +80,7 @@ module System.RedPitaya.Rp (
         generatorReset,
         generatorOutEnable,
         generatorOutDisable,
-        generatorOutIsEnabled,
         generatorAmp,
-        getGeneratorAmp,
         setGeneratorOffset,
         generatorFrequency,
         generatorPhase,
@@ -570,20 +568,20 @@ generatorOutDisable ::  Channel -> RpMonad ()
 generatorOutDisable = mapr1 ( errorMap ft1) rp_GenOutDisable
 {#fun rp_GenOutDisable {`Channel'} -> `RpError' #}
 
--- | Gets value `True` if channel is enabled otherwise return `False`
-generatorOutIsEnabled ::   Channel -> RpMonad Bool
-generatorOutIsEnabled = mapr1 ( errorMap ft2) rp_GenOutIsEnabled
-{#fun rp_GenOutIsEnabled {`Channel', alloca- `Bool' peekBool*} -> `RpError' #}
+-- Gets value `True` if channel is enabled otherwise return `False`
+-- generatorOutIsEnabled ::   Channel -> RpMonad Bool
+-- generatorOutIsEnabled = mapr1 ( errorMap ft2) rp_GenOutIsEnabled
+-- {#fun rp_GenOutIsEnabled {`Channel', alloca- `Bool' peekBool*} -> `RpError' #}
 
 -- | Sets channel signal peak to peak amplitude.
 generatorAmp ::   Channel -> CFloat -> RpMonad ()
 generatorAmp = mapr2 ( errorMap ft1) rp_GenAmp
 {#fun rp_GenAmp {`Channel' , `CFloat' } -> `RpError' #}
 
--- | gets channel signal peak to peak amplitude
-getGeneratorAmp ::   Channel -> RpMonad CFloat
-getGeneratorAmp = mapr1 ( errorMap ft2) rp_GenGetAmp
-{#fun rp_GenGetAmp {`Channel' , alloca- `CFloat' peek* } -> `RpError' #}
+-- gets channel signal peak to peak amplitude
+-- getGeneratorAmp ::   Channel -> RpMonad CFloat
+-- getGeneratorAmp = mapr1 ( errorMap ft2) rp_GenGetAmp
+-- {#fun rp_GenGetAmp {`Channel' , alloca- `CFloat' peek* } -> `RpError' #}
 
 
 -- | Sets DC offset of the signal. signal = signal + DC_offset.
