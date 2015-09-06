@@ -49,10 +49,10 @@ cabal-version:       >=1.10
 
 library
   -- Modules exported by the library.
-  exposed-modules: System.RedPitaya.Rp,System.RedPitaya.Fpga
+  exposed-modules: System.RedPitaya.Fpga
   
   -- Modules included in this library but not exported.
-  -- other-modules:       
+  -- other-modules:  
   
   -- LANGUAGE extensions used by modules in this package.
   -- other-extensions:    
@@ -66,5 +66,5 @@ library
   -- Base language which the package is written in.
   default-language:    Haskell2010
   
-  build-tools: c2hs 
-  include-dirs: include
+  -- build-tools: c2hs 
+  -- include-dirs: include
