@@ -76,12 +76,17 @@ module System.RedPitaya.Fpga (
     getChBAxiWritePtrCurrent,
     getOscChABuffer,
     getOscChBBuffer,
+    -- * Arbitrary Signal Generator (ASG)
+    fpgaGetAsgOption,
+    fpgaSetAsgOption,
+    fpgaSetAsgOptionBExtGatRep,
     -- * Plumbing
     -- | low level functions for direct Fpga access, used to extend interface
     Page,
     Offset,
     fpgaRead,
     fpgaWrite,
+    fpgaFmap,
     pokeFpgaArray,
     peekFpgaArray
 )   
@@ -176,6 +181,12 @@ fpgaWrite :: Page ->  Offset -> Registry -> Fpga ()
 fpgaWrite page offset reg = do
     p <- getOffsetPtr page offset
     liftIO $ poke p reg
+
+-- | apply transformation on fpga registry value 
+fpgaFmap :: Page ->  Offset -> (Registry -> Registry) -> Fpga ()
+fpgaFmap page offset f = do
+    reg <- fpgaRead page offset
+    fpgaWrite page offset (f reg)
 
 -- | write array in fpga memory
 pokeFpgaArray :: Page -> Offset -> [Registry] -> Fpga ()
@@ -325,7 +336,6 @@ osciloscpeFpgaPage :: Int
 osciloscpeFpgaPage = 1
 
 fpgaWriteOsc = fpgaWrite osciloscpeFpgaPage
-
 fpgaReadOsc = fpgaRead osciloscpeFpgaPage
 
 
@@ -401,7 +411,6 @@ setDelayAfterTrigger :: Registry -> Fpga ()
 setDelayAfterTrigger = fpgaWriteOsc 0x10
 
 -- | gets delay after trigger value
-getDelayAfterTrigger :: Fpga Registry
 getDelayAfterTrigger = fpgaReadOsc 0x10
 
 -- | sets oscilloscope decimation registry, allows only
@@ -415,17 +424,11 @@ getOscDecimationRaw =  fpgaReadOsc 0x14
 
 -- | oscilloscope decimation
 data OscDecimation = 
-    -- | 1
     OscDec1  
-    -- | 8
     | OscDec8
-    -- | 64
     | OscDec64 
-    -- | 1024 
     | OscDec1024
-    -- | 8192
     | OscDec8192
-    -- | 65536
     | OscDec65536
     deriving (Show)
 
@@ -522,23 +525,23 @@ getChAAxiWritePtrCurrent = fpgaReadOsc 0x64
 
 ------------------------------------------------
 
--- | starting writing address ch B - CH B AXI lower address
+-- | set starting writing address ch B - CH B AXI lower address
 setChBAxiLowerAddress :: Registry -> Fpga ()
 setChBAxiLowerAddress = fpgaWriteOsc 0x70
 
--- | read - starting writing address ch B - CH B AXI lower address
+-- | get starting writing address ch B - CH B AXI lower address
 getChBAxiLowerAddress :: Fpga Registry
 getChBAxiLowerAddress = fpgaReadOsc 0x70
 
--- | starting writing address ch B - CH B AXI lower address
+-- | set starting writing address ch B - CH B AXI lower address
 setChBAxiUpperAddress :: Registry -> Fpga ()
 setChBAxiUpperAddress = fpgaWriteOsc 0x74
 
--- | read - starting writing address ch B - CH B AXI lower address
+-- | get starting writing address ch B - CH B AXI lower address
 getChBAxiUpperAddress :: Fpga Registry
 getChBAxiUpperAddress = fpgaReadOsc 0x74
 
--- | read - Number of decimated data after trigger written into memory
+-- | get number of decimated data after trigger written into memory
 getChBAxiDelayAfterTrigger :: Fpga Registry
 getChBAxiDelayAfterTrigger = fpgaReadOsc 0x78
 
@@ -546,7 +549,7 @@ getChBAxiDelayAfterTrigger = fpgaReadOsc 0x78
 setChBAxiDelayAfterTrigger :: Registry -> Fpga ()
 setChBAxiDelayAfterTrigger = fpgaWriteOsc 0x78
 
--- | Enable AXI master B
+-- | Enable AXI master B - True enable - False disable
 enableChBAxiMaster :: Bool -> Fpga ()
 enableChBAxiMaster True = fpgaWriteOsc 0x7c 1
 enableChBAxiMaster False = fpgaWriteOsc 0x7c 0
@@ -579,6 +582,42 @@ getOscChBBuffer off len = peekFpgaArray osciloscpeFpgaPage (off' + 0x20000) len'
                             len' = min (0x10000 - off) len
 
 --------------------------------------------------------------------
+
+-- ASG
+setBits :: Int -> Registry -> Registry -> Registry-> Registry
+setBits bitOffset mask value rin = valueShift .|. hole
+    where 
+        maskShift = shiftL mask bitOffset
+        hole = complement maskShift .&. rin
+        valueShift = shiftL (value .&. mask) bitOffset
+
+type FpgaSet = Registry -> Fpga ()
+type FpgaGet = Fpga Registry 
+
+asgFpgaPage = 2
+
+
+fpgaWriteAsg :: Offset -> Registry -> Fpga ()
+fpgaWriteAsg = fpgaWrite asgFpgaPage
+
+fpgaReadAsg :: Offset -> Fpga Registry
+fpgaReadAsg = fpgaRead asgFpgaPage
+
+fpgaFmapAsg :: Offset -> (Registry -> Registry) -> Fpga ()
+fpgaFmapAsg = fpgaFmap asgFpgaPage
+
+-- | get ASGoption registry
+fpgaGetAsgOption = fpgaReadAsg 0x0
+
+-- | set ASG option registry
+fpgaSetAsgOption = fpgaWriteAsg 0x0
+
+-- | ch B external gated repetitions, 
+-- registry can be either 0x0 or 0x1
+fpgaSetAsgOptionBExtGatRep :: Registry -> Fpga ()
+fpgaSetAsgOptionBExtGatRep reg = fpgaFmapAsg 0 ( setBits 24 0x1 reg)
+
+
 
 
 ---------- mmap bindings
