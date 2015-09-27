@@ -64,13 +64,11 @@ after 1 hour, binaries are build and we are ready to build hello_world
 
 Make `hello_world.hs`
 
-    import Control.Monad
-
     primes = filterPrime [2..] 
       where filterPrime (p:xs) = 
               p : filterPrime [x | x <- xs, x `mod` p /= 0]
 
-    main = forM primes print
+    main = mapM print primes
 
 
 
@@ -99,22 +97,36 @@ again make sure that `jobs` is set on 1
 also cabal uses strip by default on libraries when using config file 
 
 
-relevant configs in /home/user/.cabal-arm/config
+relevant configs in /home/user/.cabal-arm/config (for me)
 
     remote-repo: hackage.haskell.org:http://hackage.haskell.org/packages/archive
-    remote-repo-cache: /home/user/.cabal-arm/packages
-    world-file: /home/user/.cabal-arm/world
+    remote-repo-cache: /home/ralu/.cabal-arm/packages
+    world-file: /home/ralu/.cabal-arm/world
     verbose: 3
+    target: arm-unknown-linux-gnueabi
     with-compiler: arm-unknown-linux-gnueabi-ghc
     with-hc-pkg: /usr/local/bin/arm-unknown-linux-gnueabi-ghc-pkg
     executable-stripping: False
     library-stripping: False
-    extra-prog-path: /home/user/.cabal-arm/bin
-    build-summary: /home/user/.cabal-arm/logs/build.log
+    extra-lib-dirs: /usr/arm-linux-gnueabi/lib/
+    extra-prog-path: /home/ralu/.cabal-arm/bin
+    build-summary: /home/ralu/.cabal-arm/logs/build.log
     remote-build-reporting: anonymous
     jobs: 1
 
+    haddock
+
+    install-dirs user
+      prefix: /home/ralu/.cabal-arm/
+
+    install-dirs global
+      prefix: /usr/local/arm-linux-gnueabi/
+
     program-locations
-        ld-location: arm-linux-gnueabi-ld
-        strip-location: arm-linux-gnueabi-ld
+        gcc-location: arm-linux-gnueabi-gcc-5
+       ld-location: arm-linux-gnueabi-ld
+       strip-location: arm-linux-gnueabi-ld
+
+    program-default-options
+       strip-options: ""
 
