@@ -1,0 +1,19 @@
+#!/bin/sh
+
+# this cretes tutorial by wrapping ouput of pandoc tool in header
+
+MARKDOWN=doc/tutorial.md
+TUTORIAL=src/System/RedPitaya/Tutorial.hs
+
+#checkfor pandoc
+pandoc -v > /dev/null || echo "cant find pandoc"
+
+echo > $TUTORIAL
+
+printf "\n-- | \nmodule System.RedPitaya.Tutorial (\n{-| \n" >> $TUTORIAL
+pandoc -i $MARKDOWN -t haddock >> $TUTORIAL
+
+printf "\n-} \n)\nwhere\n" >> $TUTORIAL
+
+cat $TUTORIAL
+

@@ -62,7 +62,7 @@ from configure altough it should (bug?). Try first without explicitly passing gc
 
 after 1 hour, binaries are build and we are ready to build hello_world
 
-Make `hello_world.hs`
+Create `hello_world.hs`
 
     primes = filterPrime [2..] 
       where filterPrime (p:xs) = 
@@ -70,7 +70,14 @@ Make `hello_world.hs`
 
     main = mapM print primes
 
+build hello_world.hs calling ghc with command
+    `arm-unknown-linux-gnueabi-ghc -O3 hello_world.hs` 
 
+This will generate binary `hello_world` that you can run on redpitaya.
+
+It is also possible to run in emulator, by invoking qemu command 
+
+    qemu-arm-static -L /usr/arm-linux-gnueabi hello_world
 
 
 ## installing library and using cabal
@@ -85,16 +92,13 @@ manual way
             -j1 \
             install redpitaya
 
-Using this command is possible to install varous hackage packages. Make sure to use `-j1`
-flag to avoid error `/lib/ld-linux.so.3: No such file or directory`
+Using this command is possible to install varous hackage packages.  Please
+take look at how to set config file to get complete view of required flags
 
 Other way is to put all this configuration in configfile. For example create new directory
 cp `~./.cabal/config` in this dir and then modify config file. 
 
     cabal --with-confif=CONFIGFILE install redpitaya
-
-again make sure that `jobs` is set on 1
-also cabal uses strip by default on libraries when using config file 
 
 
 relevant configs in /home/user/.cabal-arm/config (for me)
