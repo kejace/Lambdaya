@@ -3,6 +3,7 @@
 -- | 
 -- <http://redpitaya.com/ Red Pitaya> native library for accessing  <https://github.com/RedPitaya/RedPitaya/blob/master/FPGA/release1/doc/RedPitaya_HDL_memory_map.odt?raw=true Fpga memory>
 module System.RedPitaya.Fpga (
+
     Fpga,
     Registry,
     withOpenFpga,
@@ -26,7 +27,6 @@ module System.RedPitaya.Fpga (
     GpioValue(..),
     setExpOut,
     getExpOut,
-
     setLed,
     -- * Oscilloscope
     -- | functions for accessing oscilloscope features
@@ -77,9 +77,23 @@ module System.RedPitaya.Fpga (
     getOscChABuffer,
     getOscChBBuffer,
     -- * Arbitrary Signal Generator (ASG)
-    fpgaGetAsgOption,
-    fpgaSetAsgOption,
-    fpgaSetAsgOptionBExtGatRep,
+    getAsgOption,
+    setAsgOption,
+    setAsgOptionBExtGatRep,
+    getAsgOptionBExtGatRep,
+    setAsgChAAmplitudeScale,
+    setAsgChAAmplitudeOffset,
+    setAsgChACounterWrap,
+    setAsgChACounterStartOffset,
+    setAsgChACounterStep,
+    getAsgChACounterReadPtr,
+    setAsgChACounterReadPtr,
+    getAsgChANumReadCycles,
+    setAsgChANumReadCycles,
+    getAsgChANumRepetitions,
+    setAsgChANumRepetitions,
+    getAsgChABurstDelay,
+    setAsgChABurstDelay,
     -- * Plumbing
     -- | low level functions for direct Fpga access, used to extend interface
     Page,
@@ -584,12 +598,24 @@ getOscChBBuffer off len = peekFpgaArray osciloscpeFpgaPage (off' + 0x20000) len'
 --------------------------------------------------------------------
 
 -- ASG
-setBits :: Int -> Registry -> Registry -> Registry-> Registry
-setBits bitOffset mask value rin = valueShift .|. hole
+-- | Set registry with value passed as tuple of bit offests
+-- | setBits (fromBit,toBit) value rin = ..
+setBits :: (Int,Int) -> Registry -> Registry -> Registry
+setBits (fromBit,toBit) value rin = valueShift .|. hole
     where 
-        maskShift = shiftL mask bitOffset
+        ones = complement 0 :: Registry
+        maskShift = xor (shiftL ones fromBit) (shiftL ones (toBit+1))  
         hole = complement maskShift .&. rin
-        valueShift = shiftL (value .&. mask) bitOffset
+        valueShift = ( shiftL value fromBit ) .&. maskShift
+
+-- | read bits  range from registy
+getBits :: (Int,Int) -> Registry -> Registry
+getBits (fromBit,toBit) value = shiftR andV fromBit
+    where
+        ones = complement 0 :: Registry
+        maskShift = xor (shiftL ones fromBit) (shiftL ones (toBit+1))  
+        andV = maskShift .&. value
+
 
 type FpgaSet = Registry -> Fpga ()
 type FpgaGet = Fpga Registry 
@@ -607,16 +633,80 @@ fpgaFmapAsg :: Offset -> (Registry -> Registry) -> Fpga ()
 fpgaFmapAsg = fpgaFmap asgFpgaPage
 
 -- | get ASGoption registry
-fpgaGetAsgOption = fpgaReadAsg 0x0
+getAsgOption = fpgaReadAsg 0x0
 
 -- | set ASG option registry
-fpgaSetAsgOption = fpgaWriteAsg 0x0
+setAsgOption = fpgaWriteAsg 0x0
+
 
 -- | ch B external gated repetitions, 
 -- registry can be either 0x0 or 0x1
-fpgaSetAsgOptionBExtGatRep :: Registry -> Fpga ()
-fpgaSetAsgOptionBExtGatRep reg = fpgaFmapAsg 0 ( setBits 24 0x1 reg)
+setAsgOptionBExtGatRep :: Registry -> Fpga ()
+setAsgOptionBExtGatRep reg = fpgaFmapAsg 0 ( setBits (24,24) reg)
 
+-- | get ch B external gated repetitions, 
+-- registry can be either 0x0 or 0x1
+getAsgOptionBExtGatRep :: Fpga Registry
+getAsgOptionBExtGatRep =  getBits (24,24) <$> getAsgOption
+
+-- | TODO others
+
+-- | todo other registries
+
+-- | Ch A amplitude scale (14 bist) - out = (data*scale)/0x2000 + offset
+setAsgChAAmplitudeScale :: Registry -> Fpga ()
+setAsgChAAmplitudeScale  reg = fpgaFmapAsg 0x4 ( setBits (16,29) reg )
+
+-- | Ch A amplitude offset (14 bits) - out  = (data*scale)/0x2000 + offset 
+setAsgChAAmplitudeOffset :: Registry -> Fpga ()
+setAsgChAAmplitudeOffset reg = fpgaFmapAsg 0x4 ( setBits (0,13) reg )
+
+-- | Ch A counter wrap - Value where counter wraps around. Depends on SM wrap setting. 
+-- If it is 1 new value is  get by wrap, if value is 0 counter goes to offset value.
+-- 16 bits for decimals.
+setAsgChACounterWrap :: Registry -> Fpga ()
+setAsgChACounterWrap = fpgaWriteAsg 0x8
+
+
+-- | Ch A Counter start offset. Start offset when trigger arrives. 16 bits for decimals.
+setAsgChACounterStartOffset :: Registry -> Fpga ()
+setAsgChACounterStartOffset = fpgaWriteAsg 0xc
+
+-- | Ch A counter step. 16 bits for decimals.
+setAsgChACounterStep :: Registry -> Fpga ()
+setAsgChACounterStep = fpgaWriteAsg 0x10
+
+-- | get Ch A buffer current read pointer
+getAsgChACounterReadPtr :: Fpga Registry
+getAsgChACounterReadPtr = fpgaReadAsg 0x14
+
+-- | set Ch A buffer current read pointer
+setAsgChACounterReadPtr :: Registry -> Fpga ()
+setAsgChACounterReadPtr = fpgaWriteAsg 0x14
+
+-- | get ch A number of read cycles in one burst
+getAsgChANumReadCycles :: Fpga Registry
+getAsgChANumReadCycles = fpgaReadAsg 0x18
+
+-- | set ch A number of read cycles in one burst
+setAsgChANumReadCycles :: Registry -> Fpga ()
+setAsgChANumReadCycles = fpgaWriteAsg 0x18
+
+-- | get ch A number of read cycles in one burst
+getAsgChANumRepetitions :: Fpga Registry
+getAsgChANumRepetitions = fpgaReadAsg 0x1a
+
+-- | set ch A number of read cycles in one burst
+setAsgChANumRepetitions :: Registry -> Fpga ()
+setAsgChANumRepetitions = fpgaWriteAsg 0x1a
+
+-- | get ch A delay between burst repetitions
+getAsgChABurstDelay :: Fpga Registry
+getAsgChABurstDelay = fpgaReadAsg 0x20
+
+-- | set ch A delay between burst repetitions
+setAsgChABurstDelay :: Registry -> Fpga ()
+setAsgChABurstDelay = fpgaWriteAsg 0x20
 
 
 
