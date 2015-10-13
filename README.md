@@ -3,8 +3,7 @@ Lambdaya
 
 ### Library for doing IO on [RedPitaya](http://redpitaya.com/) using [Haskell](https://www.haskell.org/)
 
-This library provides native binding on [Fpga Registry map](https://github.com/RedPitaya/RedPitaya/blob/master/FPGA/release1/doc/RedPitaya_HDL_memory_map.odt?raw=true)
-
+This library provides native binding on [Fpga Registry map](https://github.com/RedPitaya/RedPitaya/blob/master/fpga/doc/RedPitaya_HDL_memory_map.odt?raw=true)
 [Here](doc/build.mk) you can find notes on how to build GHC as crosscompiler
 And [Here](doc/tutorial.mk) you can check for tutorial aimed for novices.
 

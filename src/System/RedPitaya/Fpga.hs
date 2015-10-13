@@ -1,7 +1,7 @@
 {-# LANGUAGE GeneralizedNewtypeDeriving #-}
 
 -- | 
--- <http://redpitaya.com/ Red Pitaya> native library for accessing  <https://github.com/RedPitaya/RedPitaya/blob/master/FPGA/release1/doc/RedPitaya_HDL_memory_map.odt?raw=true Fpga memory>
+-- <http://redpitaya.com/ Red Pitaya> native library for accessing Fpga
 
 module System.RedPitaya.Fpga (
     Fpga,
