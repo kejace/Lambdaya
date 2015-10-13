@@ -2,7 +2,7 @@
 -- documentation, see http://haskell.org/cabal/users-guide/
 
 -- The name of the package.
-name:                RedPitaya
+name:                Lambdaya
 
 -- The package version.  See the Haskell package versioning policy (PVP) 
 -- for standards guiding when and how versions should be incremented.
@@ -13,11 +13,10 @@ name:                RedPitaya
 version:             0.1.0.0
 
 -- A short (one-line) description of the package.
-synopsis: Bindings for Open Instrument RedPitaya         
+synopsis: Library for RedPitaya         
 
 -- A longer description of the package.
-description: This library is wrapper for rp.h and enables writing haskell apps 
- that runs on RedPitaya (http://redpitaya.com)
+description: Native library for RedPitaya that runs on RedPitaya.
 
 -- The license under which the package is released.
 license:             LGPL-3
