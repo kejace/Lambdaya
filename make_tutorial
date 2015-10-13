@@ -11,9 +11,9 @@ pandoc -v > /dev/null || echo "cant find pandoc"
 echo > $TUTORIAL
 
 printf "\n-- | \nmodule System.RedPitaya.Tutorial (\n{-| \n" >> $TUTORIAL
-pandoc -i $MARKDOWN -t haddock >> $TUTORIAL
+pandoc -i $MARKDOWN -t haddock  >> $TUTORIAL
 
-printf "\n-} \n)\nwhere\n" >> $TUTORIAL
+printf "\n-} \n)\nwhere\nimport System.RedPitaya.Fpga\n" >> $TUTORIAL
 
 cat $TUTORIAL
 
