@@ -100,15 +100,10 @@ import Data.Int
 import Data.Word
 import Data.Bits
 import Foreign.Storable
-import Control.Monad
-import Control.Concurrent
-import Control.Applicative
 
-import Control.Monad.State  
-import Control.Applicative
-import Control.Monad.Fix
 import Control.Monad
--- import Bindings.Posix.Sys.Mman
+import Control.Applicative
+import Control.Monad.State  
 
 
 
