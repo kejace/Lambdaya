@@ -18,6 +18,7 @@ synopsis: Library for RedPitaya
 -- A longer description of the package.
 description: Native library for RedPitaya that runs on RedPitaya.
 
+
 -- The license under which the package is released.
 license:             LGPL-3
 
@@ -45,6 +46,10 @@ build-type:          Simple
 -- Constraint on the version of Cabal needed to build this package.
 cabal-version:       >=1.10
 
+source-repository head
+  type:     git
+  location: https://github.com/ra1u/Lambdaya.git
+
 
 library
   -- Modules exported by the library.
@@ -57,7 +62,10 @@ library
   -- other-extensions:    
   
   -- Other library packages from which modules are imported.
-  build-depends:       base, mtl, unix
+  build-depends:    
+    base >= 3 && < 5, 
+    mtl >= 2 && < 3, 
+    unix >= 2 && < 3
   
   -- Directories containing source files.
   hs-source-dirs:      src
