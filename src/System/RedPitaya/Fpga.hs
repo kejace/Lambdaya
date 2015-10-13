@@ -2,10 +2,11 @@
 
 -- | 
 -- <http://redpitaya.com/ Red Pitaya> native library for accessing  <https://github.com/RedPitaya/RedPitaya/blob/master/FPGA/release1/doc/RedPitaya_HDL_memory_map.odt?raw=true Fpga memory>
-module System.RedPitaya.Fpga (
 
+module System.RedPitaya.Fpga (
     Fpga,
     Registry,
+    Channel,
     withOpenFpga,
     -- * Housekeeping
     -- | various housekeeping and Gpio functions
@@ -28,6 +29,7 @@ module System.RedPitaya.Fpga (
     setExpOut,
     getExpOut,
     setLed,
+    getLed,
     -- * Oscilloscope
     -- | functions for accessing oscilloscope features
     resetWriteSM,
@@ -35,10 +37,8 @@ module System.RedPitaya.Fpga (
     TriggerSource(..),
     setOscTrigger,
     triggerDelayEnded,
-    setChATreshold,
-    getChATreshold,
-    setChBTreshold,
-    getChBTreshold,
+    setTreshold,
+    getTreshold,
     setDelayAfterTrigger,
     getDelayAfterTrigger,
     setOscDecimationRaw,
@@ -47,53 +47,39 @@ module System.RedPitaya.Fpga (
     setOscDecimation,
     getOscWpCurrent,
     getOscWpTrigger,
-    getOscChAHysteresis,
-    setOscChAHysteresis,
-    getOscChBHysteresis,
-    setOscChBHysteresis,
+    getOscHysteresis,
+    setOscHysteresis,
     enableOscDecimationAvarage,
-    setChAEqualFilter,
-    getChAEqualFilter,
-    setChBEqualFilter,
-    getChBEqualFilter,
-    setChAAxiLowerAddress,
-    getChAAxiLowerAddress,
-    setChAAxiUpperAddress,
-    getChAAxiUpperAddress,
-    getChAAxiDelayAfterTrigger,
-    setChAAxiDelayAfterTrigger,
-    enableChAAxiMaster,
-    getChAAxiWritePtrTrigger,
-    getChAAxiWritePtrCurrent,
-    setChBAxiLowerAddress,
-    getChBAxiLowerAddress,
-    setChBAxiUpperAddress,
-    getChBAxiUpperAddress,
-    getChBAxiDelayAfterTrigger,
-    setChBAxiDelayAfterTrigger,
-    enableChBAxiMaster,
-    getChBAxiWritePtrTrigger,
-    getChBAxiWritePtrCurrent,
-    getOscChABuffer,
-    getOscChBBuffer,
+    setEqualFilter,
+    getEqualFilter,
+    setAxiLowerAddress,
+    getAxiLowerAddress,
+    setAxiUpperAddress,
+    getAxiUpperAddress,
+    setAxiDelayAfterTrigger,
+    getAxiDelayAfterTrigger,
+    enableAxiMaster,
+    getAxiWritePtrTrigger,
+    getAxiWritePtrCurrent,
+    getOscBuffer,
     -- * Arbitrary Signal Generator (ASG)
     getAsgOption,
     setAsgOption,
     setAsgOptionBExtGatRep,
     getAsgOptionBExtGatRep,
-    setAsgChAAmplitudeScale,
-    setAsgChAAmplitudeOffset,
-    setAsgChACounterWrap,
-    setAsgChACounterStartOffset,
-    setAsgChACounterStep,
-    getAsgChACounterReadPtr,
-    setAsgChACounterReadPtr,
-    getAsgChANumReadCycles,
-    setAsgChANumReadCycles,
-    getAsgChANumRepetitions,
-    setAsgChANumRepetitions,
-    getAsgChABurstDelay,
-    setAsgChABurstDelay,
+    setAsgAmplitudeScale,
+    setAsgAmplitudeOffset,
+    setAsgCounterWrap,
+    setAsgCounterStartOffset,
+    setAsgCounterStep,
+    getAsgCounterReadPtr,
+    setAsgCounterReadPtr,
+    getAsgNumReadCycles,
+    setAsgNumReadCycles,
+    getAsgNumRepetitions,
+    setAsgNumRepetitions,
+    getAsgBurstDelay,
+    setAsgBurstDelay,
     -- * Plumbing
     -- | low level functions for direct Fpga access, used to extend interface
     Page,
@@ -126,8 +112,8 @@ import Control.Monad
 
 
 
-fpgaPageSize = 4096
-fpgaMapSize = 4096 * 8
+fpgaPageSize = 0x100000
+fpgaMapSize = 0x100000 * 8
 addrAms = 0x40000000
 
 type FpgaPtr = Ptr ()
@@ -146,6 +132,8 @@ type StateMonad a = StateT FpgaState IO  a
 newtype Fpga a = Fpga (StateMonad a) 
     deriving (Functor,Applicative, Monad,MonadIO, MonadFix, MonadPlus, Alternative)
 
+-- | Redpitaya Channel A or B.
+data Channel = A | B
 
 getStateType :: Fpga a -> StateMonad a
 getStateType (Fpga s) = s 
@@ -177,12 +165,14 @@ withOpenFpga act = do
     munmap p fpgaMapSize
     return r
 
+
 -- | get raw pointer on fpga registry calculated from page, offset 
 -- and internal state that holds memory mapped pointer
 getOffsetPtr :: Page -> Offset -> Fpga (Ptr Registry)
 getOffsetPtr page offset = 
     -- offset on getPtr 
     (\memmap -> plusPtr memmap (page * fpgaPageSize + offset)) <$> getPtr
+
 
 -- | direct read from fpga registry
 fpgaRead :: Page -> Offset -> Fpga Registry
@@ -213,6 +203,7 @@ peekFpgaArray :: Page -> Offset -> Int -> Fpga [Registry]
 peekFpgaArray page offset len = do
     p <- getOffsetPtr page offset
     liftIO $ peekArray len p
+
 
 
 ---------------------------------------------------------
@@ -343,6 +334,10 @@ getExpOut P p = (\x -> toGpioValue ( testBit x p )) <$> getExpOutP
 setLed :: Registry -> Fpga ()
 setLed = fpgaWrite 0 0x30
 
+-- | read in led registry
+getLed :: Fpga Registry
+getLed = fpgaRead 0 0x30
+
 ---------------------------------------
 -- * Oscilloscope
 
@@ -355,7 +350,7 @@ fpgaReadOsc = fpgaRead osciloscpeFpgaPage
 
 -- | reset write state machine for oscilloscope
 resetWriteSM :: Fpga ()
-resetWriteSM = fpgaWriteOsc 0 3
+resetWriteSM = fpgaWriteOsc 0 2
 
 -- | start writing data into memory (ARM trigger).
 triggerNow :: Fpga ()
@@ -404,27 +399,22 @@ setOscTriggerHelper = fpgaWriteOsc 0x4
 triggerDelayEnded :: Fpga Bool
 triggerDelayEnded = (==0) <$> fpgaReadOsc 0x4
 
--- | Ch A threshold, makes trigger when ADC value cross this value
-setChATreshold :: Registry -> Fpga ()
-setChATreshold = fpgaWriteOsc 0x8
+-- | Ch x threshold, makes trigger when ADC value cross this value
+setTreshold :: Channel -> Registry -> Fpga ()
+setTreshold A = fpgaWriteOsc 0x8
+setTreshold B = fpgaWriteOsc 0xc
 
--- | gets cha A threshold
-getChATreshold :: Fpga Registry
-getChATreshold = fpgaReadOsc 0x8
-
--- | Ch B threshold, makes trigger when ADC value cross this value
-setChBTreshold :: Registry -> Fpga ()
-setChBTreshold = fpgaWriteOsc 0xc
-
--- | gets ch B threshold
-getChBTreshold :: Fpga Registry
-getChBTreshold = fpgaReadOsc 0xc
+-- | gets ch x threshold
+getTreshold :: Channel -> Fpga Registry
+getTreshold A = fpgaReadOsc 0x8
+getTreshold B = fpgaReadOsc 0xc
 
 -- | Number of decimated data after trigger written into memory
 setDelayAfterTrigger :: Registry -> Fpga ()
 setDelayAfterTrigger = fpgaWriteOsc 0x10
 
 -- | gets delay after trigger value
+getDelayAfterTrigger :: Fpga Registry
 getDelayAfterTrigger = fpgaReadOsc 0x10
 
 -- | sets oscilloscope decimation registry, allows only
@@ -463,21 +453,15 @@ getOscWpCurrent = fpgaReadOsc 0x18
 getOscWpTrigger :: Fpga Registry
 getOscWpTrigger = fpgaReadOsc 0x1C
 
--- | Ch A hysteresis
-getOscChAHysteresis :: Fpga Registry
-getOscChAHysteresis = fpgaReadOsc 0x20
+-- | ch x hysteresis
+getOscHysteresis :: Channel -> Fpga Registry
+getOscHysteresis A = fpgaReadOsc 0x20
+getOscHysteresis B = fpgaReadOsc 0x24
 
--- | set Ch A hysteresis
-setOscChAHysteresis :: Registry -> Fpga ()
-setOscChAHysteresis = fpgaWriteOsc 0x20
-
--- | Ch B hysteresis
-getOscChBHysteresis :: Fpga Registry
-getOscChBHysteresis = fpgaReadOsc 0x24
-
--- | set Ch B hysteresis
-setOscChBHysteresis :: Registry -> Fpga ()
-setOscChBHysteresis = fpgaWriteOsc 0x24
+-- | set ch x hysteresis
+setOscHysteresis :: Channel -> Registry -> Fpga ()
+setOscHysteresis A = fpgaWriteOsc 0x20
+setOscHysteresis B = fpgaWriteOsc 0x24
 
 -- | Enable signal average at decimation True enables, False disables
 enableOscDecimationAvarage :: Bool -> Fpga ()
@@ -485,115 +469,73 @@ enableOscDecimationAvarage True = fpgaWriteOsc 0x28 1
 enableOscDecimationAvarage False = fpgaWriteOsc 0x28 0
 
 -- | set ch A equalization filter, takes array with coefficients [AA,BB,KK,PP]
-setChAEqualFilter :: [Registry] -> Fpga ()
-setChAEqualFilter = pokeFpgaArray osciloscpeFpgaPage 0x30 . take 4
+setEqualFilter :: Channel -> [Registry] -> Fpga ()
+setEqualFilter A = pokeFpgaArray osciloscpeFpgaPage 0x30 . take 4
+setEqualFilter B = pokeFpgaArray osciloscpeFpgaPage 0x40 . take 4
 
--- | get ch A equalization filter, return array with coefficients [AA,BB,KK,PP]
-getChAEqualFilter :: Fpga [Registry]
-getChAEqualFilter = peekFpgaArray osciloscpeFpgaPage 0x30 4
+-- | get ch x equalization filter, return array with coefficients [AA,BB,KK,PP]
+getEqualFilter :: Channel -> Fpga [Registry]
+getEqualFilter A = peekFpgaArray osciloscpeFpgaPage 0x30 4
+getEqualFilter B = peekFpgaArray osciloscpeFpgaPage 0x40 4
 
--- | set ch B equalization filter, takes array with coefficients [AA,BB,KK,PP]
-setChBEqualFilter :: [Registry] -> Fpga ()
-setChBEqualFilter = pokeFpgaArray osciloscpeFpgaPage 0x40 . take 4
 
--- | get ch A equalization filter, return array with coefficients [AA,BB,KK,PP]
-getChBEqualFilter :: Fpga [Registry]
-getChBEqualFilter = peekFpgaArray osciloscpeFpgaPage 0x40 4
+setAxiGeneric' :: Offset -> Channel -> Registry -> Fpga ()
+setAxiGeneric' offest A = fpgaWriteOsc offest
+setAxiGeneric' offest B = fpgaWriteOsc (offest+0x20)
 
--- | starting writing address ch A - CH A AXI lower address
-setChAAxiLowerAddress :: Registry -> Fpga ()
-setChAAxiLowerAddress = fpgaWriteOsc 0x50
+getAxiGeneric' :: Offset -> Channel -> Fpga Registry
+getAxiGeneric' offest A = fpgaReadOsc offest
+getAxiGeneric' offest B = fpgaReadOsc (offest+0x20)
 
--- | read - starting writing address ch A - CH A AXI lower address
-getChAAxiLowerAddress :: Fpga Registry
-getChAAxiLowerAddress = fpgaReadOsc 0x50
 
--- | starting writing address ch A - CH A AXI lower address
-setChAAxiUpperAddress :: Registry -> Fpga ()
-setChAAxiUpperAddress = fpgaWriteOsc 0x54
+-- | starting writing address ch x - CH x AXI lower address
+setAxiLowerAddress :: Channel -> Registry -> Fpga ()
+setAxiLowerAddress = setAxiGeneric' 0x50
 
--- | read - starting writing address ch A - CH A AXI lower address
-getChAAxiUpperAddress :: Fpga Registry
-getChAAxiUpperAddress = fpgaReadOsc 0x54
+-- | read - starting writing address ch x - CH x AXI lower address
+getAxiLowerAddress :: Channel ->  Fpga Registry
+getAxiLowerAddress = getAxiGeneric' 0x50
+
+-- | starting writing address ch x - CH x AXI lower address
+setAxiUpperAddress :: Channel ->  Registry -> Fpga ()
+setAxiUpperAddress = setAxiGeneric' 0x54
+
+-- | read - starting writing address ch x - CH x AXI lower address
+getAxiUpperAddress :: Channel ->  Fpga Registry
+getAxiUpperAddress = getAxiGeneric' 0x54
 
 -- | read - Number of decimated data after trigger written into memory
-getChAAxiDelayAfterTrigger :: Fpga Registry
-getChAAxiDelayAfterTrigger = fpgaReadOsc 0x58
+getAxiDelayAfterTrigger :: Channel -> Fpga Registry
+getAxiDelayAfterTrigger = getAxiGeneric' 0x58
 
 -- | set umber of decimated data after trigger written into memory
-setChAAxiDelayAfterTrigger :: Registry -> Fpga ()
-setChAAxiDelayAfterTrigger = fpgaWriteOsc 0x58
+setAxiDelayAfterTrigger :: Channel -> Registry -> Fpga ()
+setAxiDelayAfterTrigger = setAxiGeneric' 0x58
 
 -- | Enable AXI master
-enableChAAxiMaster :: Bool -> Fpga ()
-enableChAAxiMaster True = fpgaWriteOsc 0x5c 1
-enableChAAxiMaster False = fpgaWriteOsc 0x5c 0
+enableAxiMaster :: Channel -> Bool -> Fpga ()
+enableAxiMaster ch True = setAxiGeneric' 0x5c ch 1
+enableAxiMaster ch False = setAxiGeneric' 0x5c ch 0
 
--- | Write pointer for ch A at time when trigger arrived
-getChAAxiWritePtrTrigger :: Fpga Registry
-getChAAxiWritePtrTrigger = fpgaReadOsc 0x60
+-- | Write pointer for ch x at time when trigger arrived
+getAxiWritePtrTrigger :: Channel -> Fpga Registry
+getAxiWritePtrTrigger = getAxiGeneric' 0x60
 
--- | current write pointer for ch A
-getChAAxiWritePtrCurrent :: Fpga Registry
-getChAAxiWritePtrCurrent = fpgaReadOsc 0x64
-
-------------------------------------------------
-
--- | set starting writing address ch B - CH B AXI lower address
-setChBAxiLowerAddress :: Registry -> Fpga ()
-setChBAxiLowerAddress = fpgaWriteOsc 0x70
-
--- | get starting writing address ch B - CH B AXI lower address
-getChBAxiLowerAddress :: Fpga Registry
-getChBAxiLowerAddress = fpgaReadOsc 0x70
-
--- | set starting writing address ch B - CH B AXI lower address
-setChBAxiUpperAddress :: Registry -> Fpga ()
-setChBAxiUpperAddress = fpgaWriteOsc 0x74
-
--- | get starting writing address ch B - CH B AXI lower address
-getChBAxiUpperAddress :: Fpga Registry
-getChBAxiUpperAddress = fpgaReadOsc 0x74
-
--- | get number of decimated data after trigger written into memory
-getChBAxiDelayAfterTrigger :: Fpga Registry
-getChBAxiDelayAfterTrigger = fpgaReadOsc 0x78
-
--- | set umber of decimated data after trigger written into memory
-setChBAxiDelayAfterTrigger :: Registry -> Fpga ()
-setChBAxiDelayAfterTrigger = fpgaWriteOsc 0x78
-
--- | Enable AXI master B - True enable - False disable
-enableChBAxiMaster :: Bool -> Fpga ()
-enableChBAxiMaster True = fpgaWriteOsc 0x7c 1
-enableChBAxiMaster False = fpgaWriteOsc 0x7c 0
-
--- | Write pointer for ch B at time when trigger arrived
-getChBAxiWritePtrTrigger :: Fpga Registry
-getChBAxiWritePtrTrigger = fpgaReadOsc 0x80
-
--- | current write pointer for ch B
-getChBAxiWritePtrCurrent :: Fpga Registry
-getChBAxiWritePtrCurrent = fpgaReadOsc 0x84
+-- | current write pointer for ch x
+getAxiWritePtrCurrent :: Channel -> Fpga Registry
+getAxiWritePtrCurrent = getAxiGeneric' 0x64
 
 
--- | reads oscilloscope buffer for channel A from Fpga passing offset and length. 
+-- | reads oscilloscope buffer for channel x from Fpga passing offset and length. 
 -- buffer should fit within 16k sampling range.
 -- Returns  less than requested data if trying to read over the bounds.
-getOscChABuffer :: Offset -> Int -> Fpga [Registry]
-getOscChABuffer off len = peekFpgaArray osciloscpeFpgaPage (off' + 0x10000) len'
+getOscBuffer :: Channel -> Offset -> Int -> Fpga [Registry]
+getOscBuffer chan off len = peekFpgaArray osciloscpeFpgaPage (off' + (chOff chan)) len'
                           where
                             off' = max 0 off
                             len' = min (0x10000 - off) len
-
--- | reads oscilloscope buffer for channel B from Fpga passing offset and length. 
--- buffer should fit within 16k sampling range.
--- Returns less than requested data if trying to read over the bounds.
-getOscChBBuffer :: Offset -> Int -> Fpga [Registry]
-getOscChBBuffer off len = peekFpgaArray osciloscpeFpgaPage (off' + 0x20000) len'
-                          where
-                            off' = max 0 off 
-                            len' = min (0x10000 - off) len
+                            chOff A = 0x10000 
+                            chOff B = 0x20000
 
 --------------------------------------------------------------------
 
@@ -632,10 +574,25 @@ fpgaReadAsg = fpgaRead asgFpgaPage
 fpgaFmapAsg :: Offset -> (Registry -> Registry) -> Fpga ()
 fpgaFmapAsg = fpgaFmap asgFpgaPage
 
+fpgaWriteAsgChannel :: Offset -> Channel -> Registry -> Fpga ()
+fpgaWriteAsgChannel offset A = fpgaWriteAsg   offset
+fpgaWriteAsgChannel offset B = fpgaWriteAsg ( offset + 0x20)
+
+fpgaReadAsgChannel :: Offset -> Channel -> Fpga Registry
+fpgaReadAsgChannel offset A = fpgaReadAsg   offset
+fpgaReadAsgChannel offset B = fpgaReadAsg ( offset + 0x20)
+
+fpgaFmapAsgChannel :: Offset -> (Registry -> Registry) -> Channel -> Fpga ()
+fpgaFmapAsgChannel offset f A = fpgaFmapAsg   offset f
+fpgaFmapAsgChannel offset f B = fpgaFmapAsg ( offset + 0x20) f
+
+
 -- | get ASGoption registry
+getAsgOption :: Fpga Registry
 getAsgOption = fpgaReadAsg 0x0
 
 -- | set ASG option registry
+setAsgOption :: Registry -> Fpga ()
 setAsgOption = fpgaWriteAsg 0x0
 
 
@@ -653,62 +610,60 @@ getAsgOptionBExtGatRep =  getBits (24,24) <$> getAsgOption
 
 -- | todo other registries
 
--- | Ch A amplitude scale (14 bist) - out = (data*scale)/0x2000 + offset
-setAsgChAAmplitudeScale :: Registry -> Fpga ()
-setAsgChAAmplitudeScale  reg = fpgaFmapAsg 0x4 ( setBits (16,29) reg )
+-- | Ch x amplitude scale (14 bist) - out = (data*scale)/0x2000 + offset
+setAsgAmplitudeScale :: Channel -> Registry -> Fpga ()
+setAsgAmplitudeScale ch reg = fpgaFmapAsgChannel 0x4 ( setBits (16,29) reg ) ch
 
--- | Ch A amplitude offset (14 bits) - out  = (data*scale)/0x2000 + offset 
-setAsgChAAmplitudeOffset :: Registry -> Fpga ()
-setAsgChAAmplitudeOffset reg = fpgaFmapAsg 0x4 ( setBits (0,13) reg )
+-- | Ch x amplitude offset (14 bits) - out  = (data*scale)/0x2000 + offset 
+setAsgAmplitudeOffset :: Channel -> Registry -> Fpga ()
+setAsgAmplitudeOffset ch reg = fpgaFmapAsgChannel 0x4 ( setBits (0,13) reg ) ch
 
--- | Ch A counter wrap - Value where counter wraps around. Depends on SM wrap setting. 
+-- | Ch x counter wrap - Value where counter wraps around. Depends on SM wrap setting. 
 -- If it is 1 new value is  get by wrap, if value is 0 counter goes to offset value.
 -- 16 bits for decimals.
-setAsgChACounterWrap :: Registry -> Fpga ()
-setAsgChACounterWrap = fpgaWriteAsg 0x8
+setAsgCounterWrap :: Channel -> Registry -> Fpga ()
+setAsgCounterWrap = fpgaWriteAsgChannel  0x8
 
 
--- | Ch A Counter start offset. Start offset when trigger arrives. 16 bits for decimals.
-setAsgChACounterStartOffset :: Registry -> Fpga ()
-setAsgChACounterStartOffset = fpgaWriteAsg 0xc
+-- | Ch x Counter start offset. Start offset when trigger arrives. 16 bits for decimals.
+setAsgCounterStartOffset :: Channel -> Registry -> Fpga ()
+setAsgCounterStartOffset = fpgaWriteAsgChannel 0xc
 
--- | Ch A counter step. 16 bits for decimals.
-setAsgChACounterStep :: Registry -> Fpga ()
-setAsgChACounterStep = fpgaWriteAsg 0x10
+-- | Ch x counter step. 16 bits for decimals.
+setAsgCounterStep :: Channel -> Registry -> Fpga ()
+setAsgCounterStep = fpgaWriteAsgChannel 0x10
 
--- | get Ch A buffer current read pointer
-getAsgChACounterReadPtr :: Fpga Registry
-getAsgChACounterReadPtr = fpgaReadAsg 0x14
+-- | get ch x buffer current read pointer
+getAsgCounterReadPtr :: Channel -> Fpga Registry
+getAsgCounterReadPtr = fpgaReadAsgChannel 0x14
 
--- | set Ch A buffer current read pointer
-setAsgChACounterReadPtr :: Registry -> Fpga ()
-setAsgChACounterReadPtr = fpgaWriteAsg 0x14
+-- | set ch x buffer current read pointer
+setAsgCounterReadPtr :: Channel -> Registry -> Fpga ()
+setAsgCounterReadPtr = fpgaWriteAsgChannel 0x14
 
--- | get ch A number of read cycles in one burst
-getAsgChANumReadCycles :: Fpga Registry
-getAsgChANumReadCycles = fpgaReadAsg 0x18
+-- | get ch x number of read cycles in one burst
+getAsgNumReadCycles :: Channel -> Fpga Registry
+getAsgNumReadCycles = fpgaReadAsgChannel 0x18
 
--- | set ch A number of read cycles in one burst
-setAsgChANumReadCycles :: Registry -> Fpga ()
-setAsgChANumReadCycles = fpgaWriteAsg 0x18
+-- | set ch x number of read cycles in one burst
+setAsgNumReadCycles :: Channel -> Registry -> Fpga ()
+setAsgNumReadCycles = fpgaWriteAsgChannel 0x18
 
--- | get ch A number of read cycles in one burst
-getAsgChANumRepetitions :: Fpga Registry
-getAsgChANumRepetitions = fpgaReadAsg 0x1a
+-- | get ch x number of read cycles in one burst
+getAsgNumRepetitions :: Channel -> Fpga Registry
+getAsgNumRepetitions = fpgaReadAsgChannel  0x1a
 
--- | set ch A number of read cycles in one burst
-setAsgChANumRepetitions :: Registry -> Fpga ()
-setAsgChANumRepetitions = fpgaWriteAsg 0x1a
+-- | set ch x number of read cycles in one burst
+setAsgNumRepetitions :: Channel -> Registry -> Fpga ()
+setAsgNumRepetitions = fpgaWriteAsgChannel 0x1a
 
--- | get ch A delay between burst repetitions
-getAsgChABurstDelay :: Fpga Registry
-getAsgChABurstDelay = fpgaReadAsg 0x20
+-- | get ch x delay between burst repetitions, granularity=1us
+getAsgBurstDelay :: Channel -> Fpga Registry
+getAsgBurstDelay = fpgaReadAsgChannel 0x20
 
--- | set ch A delay between burst repetitions
-setAsgChABurstDelay :: Registry -> Fpga ()
-setAsgChABurstDelay = fpgaWriteAsg 0x20
-
-
+-- | set ch x delay between burst repetitions, granularity=1us
+setAsgBurstDelay :: Channel -> Registry -> Fpga ()
+setAsgBurstDelay = fpgaWriteAsgChannel 0x20
 
 ---------- mmap bindings
 
@@ -727,5 +682,4 @@ c'MAP_PRIVATE = 2
 c'MAP_SHARED = 1
 c'MAP_FAILED = wordPtrToPtr 4294967295
 
-
--- main = print "hello World" --withOpenFpga testled
+        
