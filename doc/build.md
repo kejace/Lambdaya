@@ -1,6 +1,6 @@
 
 
-# Building GHC for RedPitaya
+## Building GHC for RedPitaya (armel)
 
 This example builds cross ghc-7.10.2-release on debian stretch. We need to build
 ghc running on our system (x64 for example) that generates binaries for arm.
