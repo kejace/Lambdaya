@@ -6,7 +6,7 @@
 module System.RedPitaya.Fpga (
     Fpga,
     Registry,
-    Channel,
+    Channel(..),
     withOpenFpga,
     -- * Housekeeping
     -- | various housekeeping and Gpio functions
