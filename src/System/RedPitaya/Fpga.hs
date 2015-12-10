@@ -3,7 +3,7 @@
 -- | 
 -- <http://redpitaya.com/ Red Pitaya> native library for accessing Fpga
 
-module System.RedPitaya.Fpga (
+module Fpga (
     Fpga,
     Registry,
     Channel(..),
@@ -659,6 +659,7 @@ getAsgBurstDelay = fpgaReadAsgChannel 0x20
 -- | set ch x delay between burst repetitions, granularity=1us
 setAsgBurstDelay :: Channel -> Registry -> Fpga ()
 setAsgBurstDelay = fpgaWriteAsgChannel 0x20
+
 
 ---------- mmap bindings
 
