@@ -1,72 +1,125 @@
+{-# LANGUAGE TypeSynonymInstances #-}
+{-# LANGUAGE FlexibleInstances #-}
+
+module Tcp (
+   NetworkFpgaSetGet(..),
+   runRemoteRp ,
+   runRpServer
+) where
+
 import Network.Socket as NS
 import Control.Concurrent (forkIO)
 import Data.Word
 
-import Pipes 
-import qualified Pipes.Prelude as PL
+import Pipes as P
+import qualified Pipes.Prelude as PP
 import Pipes.Parse
-import Pipes.ByteString
 
-import System.IO
 import Pipes.Binary 
-import qualified Data.Binary as DB
 import Data.Binary.Get
 import Data.Binary.Put
 import Pipes.Network.TCP
 
-import System.Environment 
-import System.Process
-
-import  Control.Monad as M
 import Fpga2
-
 
 type Len = Word32
 type Addr = Word32
 type Reg = Word32
-data SimpleProt = Single Addr Reg | Array Len Addr [Reg] | Error deriving (Show)
+data SimpleProt = WriteSingle Addr Reg 
+                | WriteArray Len Addr [Reg] 
+                | ReadSingle Addr
+                | ReadArray Len Addr
+                | RespSingle Reg
+                | RespArray Len [Reg]
+                | Error deriving (Show,Eq)
 
-toint (Single _ a) = fromIntegral a
-single w = Single 1 w
 
-simpleProtSingle = 1
-simpleProtArray = 2
+
+toint (WriteSingle _ a) = fromIntegral a
+single w = WriteSingle 1 w
+
+cWriteSingle = 1
+cWriteArray = 2
+cReadSingle = 3
+cReadArray = 4
+cRespSingle = 5
+cRespArray = 6
+cError = 7
 
 instance Binary SimpleProt where
-  put ( Single a r) = do
-        putWord32be simpleProtSingle
-        putWord32be a
-        putWord32be r
+  put ( WriteSingle a r) =  putWord32be cWriteSingle
+                            >> putWord32be a
+                            >> putWord32be r
 
-  put ( Array len a r) = do
-        putWord32be simpleProtArray
-        putWord32be len
-        putWord32be a
-        mapM_ putWord32be r
+  put ( WriteArray len a xs) = putWord32be cWriteArray
+                              >> putWord32be len
+                              >> putWord32be a
+                              >> mapM_ putWord32be xs
 
-  put Error = return mempty
+  put (ReadSingle a) = putWord32be cReadSingle
+                       >> putWord32be a
+
+  put (ReadArray len addr) = putWord32be cReadArray 
+                             >> putWord32be addr
+
+  put (RespSingle reg) = putWord32be cRespSingle >> putWord32be reg
+
+  put (RespArray len arr) = putWord32be cRespArray
+                            >> putWord32be len
+                            >> mapM_ putWord32be arr
+
+  put Error = putWord32be cError
 
   get = do
     ty <- getWord32be
     case () 
       of _
-           | ty == simpleProtSingle -> Single <$> getWord32be <*> getWord32be
-           | ty == simpleProtArray  -> do
+           | ty == cWriteSingle -> WriteSingle <$> getWord32be <*> getWord32be
+           | ty == cWriteArray  -> do
                                     len <- getWord32be
-                                    addr <- getWord32be
-                                    d <- M.replicateM (fromIntegral len) getWord32be
-                                    return $ Array len addr d
+                                    WriteArray len <$> getWord32be <*> parseArray len 
+           | ty == cReadSingle  -> ReadSingle <$> getWord32be
+           | ty == cReadArray   -> ReadArray <$> getWord32be <*> getWord32be
+           | ty == cRespSingle  -> RespSingle <$> getWord32be
+           | ty == cRespArray   -> do 
+                                      len <- getWord32be
+                                      RespArray len <$> parseArray len 
            | otherwise -> return Error
 
+parseArray len = sequenceA ( replicate ( fromIntegral len) getWord32be )
 
-runServer = do 
+runRpServer:: PortNumber -> IO ()
+runRpServer port = do 
     sock <- socket AF_INET Stream 0
     setSocketOption sock ReuseAddr 1
-    cmdlineargs <- getArgs
-    let port = fromIntegral $ read $ Prelude.head $ cmdlineargs ++ ["4242"] 
     bindSocket sock (SockAddrInet port iNADDR_ANY)
     NS.listen sock 2
     mainLoop sock
+
+mainLoop :: Socket -> IO ()
+mainLoop s =  go where
+    go = do
+        (sock, addr) <- NS.accept s
+        let rx = fromSocket sock (4*1024)
+        let tx = toSocket sock
+        forkIO $ runConn (rx,tx)
+        go
+
+runConn (rx,tx) = withOpenFpga $ runEffect $ 
+                   runStream rx  >-> processPacket >-> PP.takeWhile (/= Error) >-> P.for cat encode  >-> tx
+
+frInt :: (Integral a, Num b) => a -> b
+frInt = fromIntegral
+
+processPacket =  await >>= handle
+  where 
+    handle (WriteSingle addr reg) = lift $ ( fpgaSet (frInt addr) reg )
+    handle (WriteArray len addr arr) = lift $ fpgaSetArray (frInt addr) arr
+    handle (ReadSingle addr ) =   lift (fpgaGet (frInt addr)) >>= (yield . RespSingle )
+    handle (ReadArray len addr ) =  lift (fpgaGetArray (frInt len)  (frInt addr) ) 
+                                             >>= yield . RespArray len
+    handle _ = yield Error
+
 
 main :: IO ()
 main = do
@@ -76,30 +129,11 @@ main = do
     NS.listen sock 2
     mainLoop sock
  
-mainLoop :: Socket -> IO ()
-mainLoop sock =  NS.accept sock >>= runConn >> close sock
 
-
-runConn :: (Socket, SockAddr) -> IO ()
-runConn (sock, addr) = do
-    let prod =  fromSocket sock (16*1024)
-    let source = runStream prod 
-    let consume = for cat encode  >-> toSocket sock
-    runEffect $ source  >-> consume
-    close sock
-
-
+runStream :: (Monad m, Binary b) =>
+     Producer ByteString (Proxy x x' () b m) r
+     -> Proxy x x' () b m ()
 runStream = runStreamB
-
-runStreamA producer = go producer where 
-    go producer = do
-      (rdata,rstream) <- runStateT decode producer
-      case rdata of
-        Left d -> return ()
-        Right d -> do
-            yield d
-            go rstream
-
 
 runStreamB producer = go producer where 
     go producer = do
@@ -109,20 +143,32 @@ runStreamB producer = go producer where
           either stop repeat v where
             stop _ = return ()
             repeat a = do
-                let r = a
-                lift $ yield r
+                lift $ yield a
                 parser
 
+--- Pc side
+type FpgaProtocol = SimpleProt
+type NetworkFpgaSetGet = Pipe FpgaProtocol FpgaProtocol IO
 
-outputData =do
+
+runRemoteRp :: HostName -> PortNumber -> NetworkFpgaSetGet () -> IO ()
+runRemoteRp addr port act = do
     sock <- socket AF_INET Stream 0
-    localhost <- inet_addr "127.0.0.1"
-    NS.connect sock $ SockAddrInet 4242 localhost
-    cmdlineargs <- getArgs
-    let n = read $ Prelude.head $ cmdlineargs ++ ["1000000"] 
-    runEffect $ each [1..n] >-> PL.map single >-> for cat encode >-> toSocket sock
-    let nint = fromIntegral n 
-    r <- PL.fold (+) 0 id $ runStream (fromSocket sock (4*1024) ) >->  PL.take nint >-> PL.map toint
-    print r
-    print "\n"
+    host <- inet_addr addr
+    NS.connect sock $ SockAddrInet port host
+    runEffect $ runStream (fromSocket sock (4*1024)) >-> act >-> P.for cat encode >-> toSocket sock
     close sock
+    return ()
+
+instance FpgaSetGet NetworkFpgaSetGet where 
+    fpgaGet offset = do
+        yield (ReadSingle $ frInt offset)
+        (RespSingle reg)  <- await
+        return reg
+
+    fpgaSet off reg = yield  $ WriteSingle (frInt off) reg
+
+
+
+
+

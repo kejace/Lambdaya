@@ -1,4 +1,6 @@
 {-# LANGUAGE GeneralizedNewtypeDeriving #-}
+{-# LANGUAGE TypeSynonymInstances #-}
+{-# LANGUAGE FlexibleInstances #-}
 
 -- | 
 -- <http://redpitaya.com/ Red Pitaya> native library for accessing Fpga
@@ -7,6 +9,7 @@ module Fpga2 (
     Registry,
     Channel(..),
     FpgaSetGet(..),
+    FpgaMmapM ,
     withOpenFpga,
     -- * Housekeeping
     -- | various housekeeping and Gpio functions
@@ -106,6 +109,8 @@ import Foreign.Storable
 import Control.Monad
 import Control.Applicative
 import Control.Monad.State  
+import Control.Monad.Reader 
+import  Data.Traversable as DT
 
 
 fpgaPageSize = 0x100000
@@ -121,14 +126,17 @@ type Page = Int
 -- | type representing fpga registry
 type Registry = Word32
 -- | Fpga monad is hidden behind this type of kind (* -> *)
-type FpgaMmapM a = StateT FpgaPtr IO a
+type FpgaMmapM = ReaderT FpgaPtr IO
+
+runFpga :: FpgaMmapM a -> FpgaPtr -> IO a
+runFpga  = runReaderT
 
 
-class (MonadIO t) => FpgaSetGet t where
-    fpgaGet :: (Storable a) => Offset -> t a
-    fpgaSet :: (Storable a) => Offset -> a -> t ()
-    fpgaGetArray :: (Storable a) => Offset -> Int -> t [a]
-    fpgaSetArray :: (Storable a) => Offset -> [a] -> t ()
+class (Monad m) => FpgaSetGet m where
+    fpgaGet ::  Offset -> m Registry
+    fpgaSet ::  Offset -> Registry -> m ()
+    fpgaGetArray :: Offset -> Int -> m [Registry]
+    fpgaSetArray :: Offset -> [Registry] -> m ()
     -- default implemetations of each others so 
     -- user can provide only one set and one get if requred
     fpgaGet off = fmap head $ fpgaGetArray off 1
@@ -137,8 +145,9 @@ class (MonadIO t) => FpgaSetGet t where
     fpgaSetArray off d = sequence_ $ zipWith fpgaSet [off, off+4 .. ] d
 
 -- | Environment where one can read and write Fpga registries
-newtype FpgaArm a = FpgaArm ( FpgaMmapM a )
-  deriving (Monad,Applicative,Functor,MonadIO,MonadState FpgaPtr)
+type FpgaArm = FpgaMmapM 
+  --deriving (Monad,Applicative,Functor,MonadIO,MonadReader FpgaPtr)
+
 
 instance FpgaSetGet FpgaArm where 
     fpgaGet o = do
@@ -154,31 +163,25 @@ instance FpgaSetGet FpgaArm where
         p <- getPtr
         liftIO $ pokeArray (plusPtr p o) xs
 
+
 -- | Redpitaya Channel A or B.
 data Channel = A | B
 
-getStateType :: FpgaArm a -> FpgaMmapM a
-getStateType (FpgaArm s) = s 
-
--- Constructor
-fpgaState a = FpgaArm ( StateT a )
-
-runFpga :: FpgaArm a -> FpgaPtr -> IO (a,FpgaPtr) 
-runFpga (FpgaArm s) = runStateT s
-
 getPtr :: FpgaArm FpgaPtr
-getPtr = get
+getPtr = ask
 
 -- | This function handles initialising Fpga memory mapping and
 -- evaluates 'Fpga' action.
-withOpenFpga :: FpgaArm a -> IO a
+withOpenFpga :: FpgaArm () -> IO ()
 withOpenFpga act = do
     fd <- openFd  "/dev/mem" ReadWrite Nothing defaultFileFlags
     setFdOption fd SynchronousWrites True
     p <- mmap nullPtr fpgaMapSize (c'PROT_READ + c'PROT_WRITE ) c'MAP_SHARED (fromIntegral fd) addrAms
-    (r,s) <- runFpga act p
+    runFpga act p
     munmap p fpgaMapSize
-    return r
+    return ()
+
+
 
 
 -- | get raw pointer on fpga registry calculated from page, offset 
@@ -199,10 +202,8 @@ fpgaRead :: (FpgaSetGet m) => Page -> Offset -> m Registry
 fpgaRead page offset = fpgaGet $ getTotalOffset page offset 
 
 -- | direct write in fpga registry
-fpgaWrite :: Page ->  Offset -> Registry -> FpgaArm ()
-fpgaWrite page offset reg = do
-    p <- getOffsetPtr page offset
-    liftIO $ poke p reg
+fpgaWrite :: (FpgaSetGet m) => Page ->  Offset -> Registry -> m ()
+fpgaWrite page offset reg = fpgaSet (getTotalOffset page offset) reg
 
 -- | apply transformation on fpga registry value 
 fpgaFmap :: Page ->  Offset -> (Registry -> Registry) -> FpgaArm ()
@@ -211,16 +212,13 @@ fpgaFmap page offset f = do
     fpgaWrite page offset (f reg)
 
 -- | write array in fpga memory
-pokeFpgaArray :: Page -> Offset -> [Registry] -> FpgaArm ()
-pokeFpgaArray page offset xs =  do
-    p <- getOffsetPtr page offset
-    liftIO $ pokeArray p xs
+writeFpgaArray :: (FpgaSetGet m) => Page -> Offset -> [Registry] -> m ()
+writeFpgaArray page offset  =  fpgaSetArray $ getTotalOffset page offset 
+
 
 -- | read array from fpga memory, passing page, offset and length
-peekFpgaArray :: Page -> Offset -> Int -> FpgaArm [Registry]
-peekFpgaArray page offset len = do
-    p <- getOffsetPtr page offset
-    liftIO $ peekArray len p
+readFpgaArray :: (FpgaSetGet a) =>  Page -> Offset -> Int -> a [Registry]
+readFpgaArray page offset = fpgaGetArray ( getTotalOffset page offset )
 
 
 
@@ -232,7 +230,7 @@ fpgaId :: (FpgaSetGet a) => a Registry
 fpgaId = fpgaRead 0 0
 
 -- | get DNA
-dna :: (FpgaSetGet a) => a Registry
+dna :: (FpgaSetGet a) => a Integer
 dna = do
     dna1 <- fromIntegral <$> fpgaRead 0 4
     dna2 <- fromIntegral <$> fpgaRead 0 8
@@ -241,33 +239,41 @@ dna = do
 -- | set expansion connector direction P registry
 --
 -- 1 out , 0 in  
+setExpDirP :: (FpgaSetGet a) => Registry -> a ()
 setExpDirP = fpgaWrite 0 0x10
 
 -- | get expansion connector direction P registry
 --
 -- 1 out , 0 in 
+getExpDirP :: (FpgaSetGet a) => a Registry
 getExpDirP = fpgaRead 0 0x10
 
 -- | set expansion connector direction N registry
 --
 -- 1 out , 0 in 
+setExpDirN :: (FpgaSetGet a) => Registry -> a ()
 setExpDirN = fpgaWrite 0 0x14
 
 -- | get expansion connector direction N registry
 --
 -- 1 out , 0 in 
+getExpDirN :: (FpgaSetGet a) => a Registry
 getExpDirN = fpgaRead 0 0x14
 
 -- | expansion connector  P output registry value
+setExpOutP :: (FpgaSetGet a) => Registry -> a ()
 setExpOutP = fpgaWrite 0 0x18
 
 -- | expansion connector  P output registry value
+getExpOutP :: (FpgaSetGet a) => a Registry
 getExpOutP = fpgaRead 0 0x18
 
 -- | expansion connector  N output registry value
+setExpOutN :: (FpgaSetGet a) => Registry -> a ()
 setExpOutN = fpgaWrite 0 0x1C
 
 -- | expansion connector  N output registry value
+getExpOutN :: (FpgaSetGet a) => a Registry
 getExpOutN = fpgaRead 0 0x1C
 
 -- | expansion connector  P input registry value
@@ -338,6 +344,7 @@ getExpOut N p = (\x -> toGpioValue ( testBit x p )) <$> getExpOutN
 getExpOut P p = (\x -> toGpioValue ( testBit x p )) <$> getExpOutP
 
 -- | write in led registry
+setLed :: (FpgaSetGet f) => Registry -> f ()
 setLed = fpgaWrite 0 0x30
 
 -- | read in led registry
@@ -345,22 +352,25 @@ getLed :: (FpgaSetGet f) => f Registry
 getLed = fpgaRead 0 0x30 
 
 
-{-
+
 ---------------------------------------
 -- * Oscilloscope
 
 osciloscpeFpgaPage = 1
 
+fpgaWriteOsc :: FpgaSetGet a => Offset -> Registry -> a ()
 fpgaWriteOsc = fpgaWrite osciloscpeFpgaPage
 
-fpgaReadOsc :: (Functor a,FpgaSetGet a) => Offset -> a Registry
+fpgaReadOsc :: FpgaSetGet a => Offset -> a Registry
 fpgaReadOsc = fpgaRead osciloscpeFpgaPage
 
 
 -- | reset write state machine for oscilloscope
+resetWriteSM :: FpgaSetGet a => a ()
 resetWriteSM = fpgaWriteOsc 0 2
 
 -- | start writing data into memory (ARM trigger).
+triggerNow :: FpgaSetGet a => a ()
 triggerNow = fpgaWriteOsc 0 1
 
 -- | oscilloscope trigger selection
@@ -396,7 +406,7 @@ setOscTrigger ExtNegaitveEdge = setOscTriggerHelper 7
 setOscTrigger AWGPositiveEdge = setOscTriggerHelper 8
 setOscTrigger AWGNegativeEdge = setOscTriggerHelper 9
 
-
+setOscTriggerHelper :: FpgaSetGet a => Registry -> a ()
 setOscTriggerHelper = fpgaWriteOsc 0x4
 
 
@@ -413,6 +423,7 @@ getTreshold A = fpgaReadOsc 0x8
 getTreshold B = fpgaReadOsc 0xc
 
 -- | Number of decimated data after trigger written into memory
+setDelayAfterTrigger :: FpgaSetGet a => Registry -> a ()
 setDelayAfterTrigger = fpgaWriteOsc 0x10
 
 -- | gets delay after trigger value
@@ -421,6 +432,7 @@ getDelayAfterTrigger = fpgaReadOsc 0x10
 
 -- | sets oscilloscope decimation registry, allows only
 -- 1,8, 64,1024,8192,65536. If other value is written data will NOT be correct.
+setOscDecimationRaw :: (FpgaSetGet a) =>  Registry -> a ()
 setOscDecimationRaw =  fpgaWriteOsc 0x14
 
 -- | oscilloscope decimation registry value
@@ -438,6 +450,7 @@ data OscDecimation =
     deriving (Show)
 
 -- | set oscilloscope decimation
+setOscDecimation :: (FpgaSetGet a) => OscDecimation -> a ()
 setOscDecimation OscDec1 = setOscDecimationRaw 1
 setOscDecimation OscDec8 = setOscDecimationRaw 8
 setOscDecimation OscDec64 = setOscDecimationRaw 64
@@ -446,74 +459,90 @@ setOscDecimation OscDec8192 = setOscDecimationRaw 8192
 setOscDecimation OscDec65536 = setOscDecimationRaw 65536
 
 -- | write pointer - current
-getOscWpCurrent = fpgaReadOsc 0x18
+getOscWpCurrent :: (FpgaSetGet a) =>  a Registry
+getOscWpCurrent = fpgaReadOsc 0x18 
 
 -- | write pointer - trigger
+getOscWpTrigger :: (FpgaSetGet a) =>  a Registry
 getOscWpTrigger = fpgaReadOsc 0x1C
 
 -- | ch x hysteresis
+getOscHysteresis :: (FpgaSetGet a) => Channel -> a Registry
 getOscHysteresis A = fpgaReadOsc 0x20
 getOscHysteresis B = fpgaReadOsc 0x24
 
 -- | set ch x hysteresis
+setOscHysteresis :: (FpgaSetGet a) => Channel -> Registry -> a ()
 setOscHysteresis A = fpgaWriteOsc 0x20
 setOscHysteresis B = fpgaWriteOsc 0x24
 
 -- | Enable signal average at decimation True enables, False disables
+enableOscDecimationAvarage :: (FpgaSetGet a) => Bool -> a ()
 enableOscDecimationAvarage True = fpgaWriteOsc 0x28 1
 enableOscDecimationAvarage False = fpgaWriteOsc 0x28 0
 
 -- | set ch A equalization filter, takes array with coefficients [AA,BB,KK,PP]
-setEqualFilter A = pokeFpgaArray osciloscpeFpgaPage 0x30 . take 4
-setEqualFilter B = pokeFpgaArray osciloscpeFpgaPage 0x40 . take 4
+setEqualFilter :: (FpgaSetGet a) => Channel -> [Registry] -> a ()
+setEqualFilter A = writeFpgaArray osciloscpeFpgaPage 0x30 . take 4
+setEqualFilter B = writeFpgaArray osciloscpeFpgaPage 0x40 . take 4
 
 -- | get ch x equalization filter, return array with coefficients [AA,BB,KK,PP]
-getEqualFilter A = peekFpgaArray osciloscpeFpgaPage 0x30 4
-getEqualFilter B = peekFpgaArray osciloscpeFpgaPage 0x40 4
+getEqualFilter :: (FpgaSetGet a) =>  Channel  -> a [Registry]
+getEqualFilter A = readFpgaArray osciloscpeFpgaPage 0x30 4
+getEqualFilter B = readFpgaArray osciloscpeFpgaPage 0x40 4
 
-
+setAxiGeneric' :: (FpgaSetGet a) => Offset -> Channel ->  Registry -> a ()
 setAxiGeneric' offest A = fpgaWriteOsc offest
 setAxiGeneric' offest B = fpgaWriteOsc (offest+0x20)
 
+getAxiGeneric' :: (FpgaSetGet a) => Offset -> Channel  -> a Registry
 getAxiGeneric' offest A = fpgaReadOsc offest
 getAxiGeneric' offest B = fpgaReadOsc (offest+0x20)
 
 
 -- | starting writing address ch x - CH x AXI lower address
+setAxiLowerAddress :: (FpgaSetGet a) => Channel ->  Registry -> a ()
 setAxiLowerAddress = setAxiGeneric' 0x50
 
 -- | read - starting writing address ch x - CH x AXI lower address
+getAxiLowerAddress :: (FpgaSetGet a) => Channel  -> a Registry
 getAxiLowerAddress = getAxiGeneric' 0x50
 
 -- | starting writing address ch x - CH x AXI lower address
+setAxiUpperAddress :: (FpgaSetGet a) => Channel ->  Registry -> a ()
 setAxiUpperAddress = setAxiGeneric' 0x54
 
 -- | read - starting writing address ch x - CH x AXI lower address
+getAxiUpperAddress :: (FpgaSetGet a) => Channel  -> a Registry
 getAxiUpperAddress = getAxiGeneric' 0x54
 
 -- | read - Number of decimated data after trigger written into memory
+getAxiDelayAfterTrigger :: (FpgaSetGet a) => Channel  -> a Registry
 getAxiDelayAfterTrigger = getAxiGeneric' 0x58
 
 -- | set umber of decimated data after trigger written into memory
+setAxiDelayAfterTrigger :: (FpgaSetGet a) => Channel ->  Registry -> a ()
 setAxiDelayAfterTrigger = setAxiGeneric' 0x58
 
 -- | Enable AXI master
+enableAxiMaster :: (FpgaSetGet a) =>  Channel -> Bool -> a ()
 enableAxiMaster ch True = setAxiGeneric' 0x5c ch 1
 enableAxiMaster ch False = setAxiGeneric' 0x5c ch 0
 
 -- | Write pointer for ch x at time when trigger arrived
-getAxiWritePtrTrigger :: (Functor a,FpgaSetGet a) => Channel -> a Registry
+getAxiWritePtrTrigger ::  FpgaSetGet a => Channel -> a Registry
 getAxiWritePtrTrigger = getAxiGeneric' 0x60
 
 -- | current write pointer for ch x
-getAxiWritePtrCurrent :: (Functor a,FpgaSetGet a) => Channel -> a Registry
+getAxiWritePtrCurrent :: FpgaSetGet a => Channel -> a Registry
 getAxiWritePtrCurrent = getAxiGeneric' 0x64
 
 
 -- | reads oscilloscope buffer for channel x from Fpga passing offset and length. 
 -- buffer should fit within 16k sampling range.
 -- Returns  less than requested data if trying to read over the bounds.
-getOscBuffer chan off len = peekFpgaArray osciloscpeFpgaPage (off' + (chOff chan)) len'
+getOscBuffer :: FpgaSetGet a => Channel -> Offset -> Int -> a [Registry]
+getOscBuffer chan off len = readFpgaArray osciloscpeFpgaPage (off' + (chOff chan)) len'
                           where
                             off' = max 0 off
                             len' = min (0x10000 - off) len
@@ -522,6 +551,7 @@ getOscBuffer chan off len = peekFpgaArray osciloscpeFpgaPage (off' + (chOff chan
 
 --------------------------------------------------------------------
 
+{-
 -- ASG
 -- | Set registry with value passed as tuple of bit offests
 -- | setBits (fromBit,toBit) value rin = ..
@@ -645,6 +675,6 @@ c'MAP_FAILED = wordPtrToPtr 4294967295
 
 
 
-main = print "haha"
+--main = withOpenFpga getLed
 
         
