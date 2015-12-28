@@ -7,6 +7,9 @@ module Tcp (
    runRpServer
 ) where
 
+import Fpga
+import Arm
+
 import Network.Socket as NS
 import Control.Concurrent (forkIO)
 import Data.Word
@@ -20,7 +23,6 @@ import Data.Binary.Get
 import Data.Binary.Put
 import Pipes.Network.TCP
 
-import Fpga2
 
 type Len = Word32
 type Addr = Word32
@@ -133,9 +135,7 @@ main = do
 runStream :: (Monad m, Binary b) =>
      Producer ByteString (Proxy x x' () b m) r
      -> Proxy x x' () b m ()
-runStream = runStreamB
-
-runStreamB producer = go producer where 
+runStream producer = go producer where 
     go producer = do
       evalStateT parser producer where 
         parser = do
