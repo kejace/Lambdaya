@@ -2,7 +2,7 @@
 -- | 
 -- <http://redpitaya.com/ Red Pitaya> library for accessing Fpga
 
-module Fpga (
+module System.RedPitaya.Fpga (
     Registry,
     Channel(..),
     FpgaSetGet(..),

@@ -2,12 +2,12 @@
 {-# LANGUAGE TypeSynonymInstances #-}
 {-# LANGUAGE FlexibleInstances #-}
 
-module Arm (
+module System.RedPitaya.Arm (
     FpgaArm,
     withOpenFpga,
 )  where
 
-import Fpga
+import System.RedPitaya.Fpga
 
 import Control.Monad.Reader 
 
@@ -56,13 +56,15 @@ withOpenFpga act = do
     munmap p fpgaMapSize
     return ()
 
-
 -- | get raw pointer on fpga registry calculated from page, offset 
 -- and internal state that holds memory mapped pointer
 -- getOffsetPtr :: Page -> Offset -> FpgaArm (Ptr Registry)
 getOffsetPtr page offset = 
     -- offset on getPtr 
     (\memmap -> plusPtr memmap (page * fpgaPageSize + offset)) <$> getPtr
+
+
+
 
 
 fpgaMapSize = 0x100000 * 8

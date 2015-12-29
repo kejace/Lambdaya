@@ -1,14 +1,14 @@
 {-# LANGUAGE TypeSynonymInstances #-}
 {-# LANGUAGE FlexibleInstances #-}
 
-module Tcp (
+module System.RedPitaya.Tcp (
    NetworkFpgaSetGet(..),
    runRemoteRp ,
    runRpServer
 ) where
 
-import Fpga
-import Arm
+import System.RedPitaya.Fpga
+import System.RedPitaya.Arm
 
 import Network.Socket as NS
 import Control.Concurrent (forkIO)
@@ -108,12 +108,12 @@ mainLoop s =  go where
         go
 
 runConn (rx,tx) = withOpenFpga $ runEffect $ 
-                   runStream rx  >-> processPacket >-> PP.takeWhile (/= Error) >-> P.for cat encode  >-> tx
+                   runStream rx  >-> P.for cat processPacket >-> PP.takeWhile (/= Error) >-> P.for cat encode  >-> tx
 
 frInt :: (Integral a, Num b) => a -> b
 frInt = fromIntegral
 
-processPacket =  await >>= handle
+processPacket =  handle
   where 
     handle (WriteSingle addr reg) = lift $ ( fpgaSet (frInt addr) reg )
     handle (WriteArray len addr arr) = lift $ fpgaSetArray (frInt addr) arr
