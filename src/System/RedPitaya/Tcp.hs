@@ -102,6 +102,7 @@ mainLoop :: Socket -> IO ()
 mainLoop s =  go where
     go = do
         (sock, addr) <- NS.accept s
+        setSocketOption sock NoDelay 1
         let rx = fromSocket sock (4*1024)
         let tx = toSocket sock
         forkIO $ runConn (rx,tx)
@@ -156,6 +157,7 @@ runRemoteRp addr port act = do
     sock <- socket AF_INET Stream 0
     host <- inet_addr addr
     NS.connect sock $ SockAddrInet port host
+    setSocketOption sock NoDelay 1
     runEffect $ runStream (fromSocket sock (4*1024)) >-> act >-> P.for cat encode >-> toSocket sock
     close sock
     return ()
