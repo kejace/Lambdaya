@@ -110,9 +110,10 @@ type Page = Int
 type Registry = Word32
 
 
+-- | size of Fpga page
 fpgaPageSize = 0x100000 :: Offset
 
-
+-- | FpgaSetGet is typeclass for acesssing Fpga
 class (Monad m) => FpgaSetGet m where
     fpgaGet ::  Offset -> m Registry
     fpgaSet ::  Offset -> Registry -> m ()

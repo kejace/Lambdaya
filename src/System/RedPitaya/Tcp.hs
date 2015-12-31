@@ -1,6 +1,8 @@
 {-# LANGUAGE TypeSynonymInstances #-}
 {-# LANGUAGE FlexibleInstances #-}
 
+
+-- | Implemention of both client and server for contolling fpga over tcp
 module System.RedPitaya.Tcp (
    NetworkFpgaSetGet(..),
    runRemoteRp ,
@@ -90,6 +92,7 @@ instance Binary SimpleProt where
 
 parseArray len = sequenceA ( replicate ( fromIntegral len) getWord32be )
 
+-- | This can be used to implement run server on RedPitaya
 runRpServer:: PortNumber -> IO ()
 runRpServer port = do 
     sock <- socket AF_INET Stream 0
@@ -109,7 +112,7 @@ mainLoop s =  go where
         go
 
 runConn (rx,tx) = withOpenFpga $ runEffect $ 
-                   runStream rx  >-> P.for cat processPacket >-> PP.takeWhile (/= Error) >-> P.for cat encode  >-> tx
+                    runStream rx  >-> P.for cat processPacket >-> PP.takeWhile (/= Error) >-> P.for cat encode  >-> tx
 
 frInt :: (Integral a, Num b) => a -> b
 frInt = fromIntegral
@@ -136,6 +139,8 @@ main = do
 runStream :: (Monad m, Binary b) =>
      Producer ByteString (Proxy x x' () b m) r
      -> Proxy x x' () b m ()
+
+
 runStream producer = go producer where 
     go producer = do
       evalStateT parser producer where 
@@ -147,11 +152,15 @@ runStream producer = go producer where
                 lift $ yield a
                 parser
 
+
+
 --- Pc side
 type FpgaProtocol = SimpleProt
+
+-- | Type that implements FpgaSetGet over network
 type NetworkFpgaSetGet = Pipe FpgaProtocol FpgaProtocol IO
 
-
+-- | This evaluates FpgaSetGet action that sends commands on RedPitaya
 runRemoteRp :: HostName -> PortNumber -> NetworkFpgaSetGet () -> IO ()
 runRemoteRp addr port act = do
     sock <- socket AF_INET Stream 0
@@ -165,12 +174,20 @@ runRemoteRp addr port act = do
 instance FpgaSetGet NetworkFpgaSetGet where 
     fpgaGet offset = do
         yield (ReadSingle $ frInt offset)
-        (RespSingle reg)  <- await
-        return reg
+        await >>= respsing
+          where
+           respsing (RespSingle reg) = return reg
+           respsing _ = yield Error >> return 0
 
     fpgaSet off reg = yield  $ WriteSingle (frInt off) reg
 
+    fpgaGetArray offset len = do 
+        yield $ ReadArray ( frInt len) (frInt offset)
+        await >>= resparray
+          where
+            resparray (RespArray _ xs) = return xs
+            resparray _ = yield Error >> return []
 
-
+    fpgaSetArray offset xs = yield $ WriteArray ( frInt (length xs)) (frInt offset) xs
 
 

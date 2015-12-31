@@ -2,6 +2,11 @@
 {-# LANGUAGE TypeSynonymInstances #-}
 {-# LANGUAGE FlexibleInstances #-}
 
+-- | 
+-- <http://redpitaya.com/ Red Pitaya> library for accessing from onboard arm
+-- this code can be executed only natively on RedPitay Zinq proc using  arm ghc compiler
+-- check doc/build.md or https://github.com/ra1u/Lambdaya/blob/master/doc/build.md for notes on how to crossbuild
+
 module System.RedPitaya.Arm (
     FpgaArm,
     withOpenFpga,
@@ -55,6 +60,7 @@ withOpenFpga act = do
     runArm act p
     munmap p fpgaMapSize
     return ()
+
 
 -- | get raw pointer on fpga registry calculated from page, offset 
 -- and internal state that holds memory mapped pointer
