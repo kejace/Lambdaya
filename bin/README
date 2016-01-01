@@ -1,0 +1,4 @@
+binary for redpitaya
+
+arm-unknown-linux-gnueabi-ghc -O3 server.hs
+arm-linux-gnueabi-strip  server
