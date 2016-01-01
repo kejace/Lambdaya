@@ -3,9 +3,11 @@
 {-# LANGUAGE FlexibleInstances #-}
 
 -- | 
--- <http://redpitaya.com/ Red Pitaya> library for accessing from onboard arm
--- this code can be executed only natively on RedPitay Zinq proc using  arm ghc compiler
--- check doc/build.md or https://github.com/ra1u/Lambdaya/blob/master/doc/build.md for notes on how to crossbuild
+-- <http://redpitaya.com/ Red Pitaya> library for accessing FPGA from arm.
+-- This code can be executed only natively on RedPitay Zinq proc using  arm ghc compiler  
+--
+-- check <https://github.com/ra1u/Lambdaya/blob/master/doc/build.md  doc/build.md>
+-- for notes on how to compile crosscompiler  
 
 module System.RedPitaya.Arm (
     FpgaArm,

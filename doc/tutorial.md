@@ -2,10 +2,9 @@ tutorial for System.Readpitaya Libraray
 ---------------------------------------
 
 System.Readpitaya native haskell library for
-[redpitaya](http://redpitaya.com/) that enables direct bindings on
+[redpitaya](http://redpitaya.com/) that enables bindings on
 [FPGA](https://github.com/RedPitaya/RedPitaya/blob/master/fpga/doc/RedPitaya_HDL_memory_map.odt?raw=true).
-It also supports remote redpitaya contolling trough similar inteface.
-
+It also supports remote redpitaya contolling trough same inteface over TCP/IP.
 
 
 Here it is simple an minimal example to use library
@@ -19,10 +18,12 @@ Here it is simple an minimal example to use library
     main = runRemoteRp rpIp rpPort (setLed 0x55) 
 
 
-`runRemoteRp` is function that execute `FpgaSetGet` over network
+`runRemoteRp` is function that execute `FpgaSetGet` over network. If you dont have
+arm-ghc compiler available, you can use compiled binaries [bin/server]((https://github.com/RedPitaya/RedPitaya/blob/master/bin/server)
+and run them on RedPitaya.
 
-Lambdaya libraray enables also execution of code natively trough `withOpenFpga`
-using same `FpgaSetGet` action 
+Lambdaya libraray also enables execution of same code natively trough `withOpenFpga`
+using same `FpgaSetGet` action.
 
 
     import System.RedPitaya.Fpga
@@ -54,7 +55,7 @@ main = runRemoteRp rpIp rpPort (knightRider 0)
 
 ```
 
-
-
+For full interface and fuctions available for contolling and acessing registries,
+check Fpga module.
 
 
