@@ -67,7 +67,6 @@ library
   -- Other library packages from which modules are imported.
   build-depends:    
     base >= 3 && < 5, 
-    unix >= 2 && < 3,
     mtl >= 2 && < 3,
     network >= 2 && < 3,
     binary >=0 && <1,
@@ -75,6 +74,11 @@ library
     pipes-network >=0 && <1,
     pipes-binary >= 0 && <1,
     pipes-parse >= 3 && <4
+  
+  if arch(arm) {
+    build-depends: unix >= 2 && < 3
+  }
+
   
   -- Directories containing source files.
   hs-source-dirs:      src

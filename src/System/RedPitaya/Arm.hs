@@ -1,6 +1,7 @@
 {-# LANGUAGE GeneralizedNewtypeDeriving #-}
 {-# LANGUAGE TypeSynonymInstances #-}
 {-# LANGUAGE FlexibleInstances #-}
+{-# LANGUAGE CPP #-}
 
 -- | 
 -- <http://redpitaya.com/ Red Pitaya> library for accessing FPGA from arm.
@@ -14,15 +15,19 @@ module System.RedPitaya.Arm (
     withOpenFpga,
 )  where
 
-import System.RedPitaya.Fpga
 
-import Control.Monad.Reader 
+#ifdef arm_HOST_ARCH
 
 import Foreign.C.Types
-import Foreign.Ptr
 import Foreign.Marshal.Array
 import System.Posix.IO
 import Foreign.Storable
+
+#endif
+
+import System.RedPitaya.Fpga
+import Control.Monad.Reader 
+import Foreign.Ptr
 
 
 type FpgaPtr = Ptr ()
@@ -30,6 +35,8 @@ type FpgaPtr = Ptr ()
 -- | FpgaSetGet get for running on Arm
 type FpgaArm = ReaderT FpgaPtr IO
 
+
+#ifdef arm_HOST_ARCH
 
 runArm :: FpgaArm a -> FpgaPtr -> IO a
 runArm  = runReaderT
@@ -95,3 +102,19 @@ c'MAP_FIXED = 16
 c'MAP_PRIVATE = 2
 c'MAP_SHARED = 1
 c'MAP_FAILED = wordPtrToPtr 4294967295
+#else
+
+
+-- | This function handles initialising Fpga memory mapping and
+-- evaluates 'Fpga' action.
+withOpenFpga :: FpgaArm () -> IO ()
+withOpenFpga act = undefined
+
+instance FpgaSetGet FpgaArm where 
+    fpgaGet = undefined
+    fpgaSet = undefined
+
+#endif
+
+
+
