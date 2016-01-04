@@ -7,9 +7,10 @@ module System.RedPitaya.Tutorial (
 #tutorial-for-system.readpitaya-libraray#
 
 System.Readpitaya native haskell library for
-<http://redpitaya.com/ redpitaya> that enables direct bindings on
+<http://redpitaya.com/ redpitaya> that enables bindings on
 <https://github.com/RedPitaya/RedPitaya/blob/master/fpga/doc/RedPitaya_HDL_memory_map.odt?raw=true FPGA>.
-It also supports remote redpitaya contolling trough similar inteface.
+It also supports remote redpitaya contolling trough same inteface over
+TCP\/IP.
 
 Here it is simple an minimal example to use library
 
@@ -21,10 +22,13 @@ Here it is simple an minimal example to use library
 >
 > main = runRemoteRp rpIp rpPort (setLed 0x55) 
 
-@runRemoteRp@ is function that execute @FpgaSetGet@ over network
+@runRemoteRp@ is function that execute @FpgaSetGet@ over network. If you
+dont have arm-ghc compiler available, you can use compiled binaries
+[bin\/server]((https:\/\/github.com\/RedPitaya\/RedPitaya\/blob\/master\/bin\/server)
+and run them on RedPitaya.
 
-Lambdaya libraray enables also execution of code natively trough
-@withOpenFpga@ using same @FpgaSetGet@ action
+Lambdaya libraray also enables execution of same code natively trough
+@withOpenFpga@ from Arm module using same @FpgaSetGet@ action.
 
 > import System.RedPitaya.Fpga
 > import System.RedPitaya.Arm
@@ -35,6 +39,7 @@ Inspiration for last example is technology from 1970s
 https:\/\/www.youtube.com\/watch?v=Hm3AFz4wrw4
 
 > import System.RedPitaya.Fpga
+> import System.RedPitaya.Tcp
 > import Control.Concurrent (threadDelay)
 > import Data.Bits
 > import Control.Monad.IO.Class (liftIO)
@@ -50,6 +55,8 @@ https:\/\/www.youtube.com\/watch?v=Hm3AFz4wrw4
 >
 > main = runRemoteRp rpIp rpPort (knightRider 0)
 
+For full interface and fuctions available for contolling and acessing
+registries, check Fpga module.
 
 -} 
 )

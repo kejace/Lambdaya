@@ -9,28 +9,29 @@ It also supports remote redpitaya contolling trough same inteface over TCP/IP.
 
 Here it is simple an minimal example to use library
 
-    import System.RedPitaya.Fpga
-    import System.RedPitaya.Tcp
+``` {.haskell}
+import System.RedPitaya.Fpga
+import System.RedPitaya.Tcp
 
-    rpIp = "10.42.0.219"
-    rpPort = 4242
+rpIp = "10.42.0.219"
+rpPort = 4242
 
-    main = runRemoteRp rpIp rpPort (setLed 0x55) 
-
+main = runRemoteRp rpIp rpPort (setLed 0x55) 
+```
 
 `runRemoteRp` is function that execute `FpgaSetGet` over network. If you dont have
 arm-ghc compiler available, you can use compiled binaries [bin/server]((https://github.com/RedPitaya/RedPitaya/blob/master/bin/server)
 and run them on RedPitaya.
 
 Lambdaya libraray also enables execution of same code natively trough `withOpenFpga`
-using same `FpgaSetGet` action.
+from Arm module using same `FpgaSetGet` action.
 
+``` {.haskell}
+import System.RedPitaya.Fpga
+import System.RedPitaya.Arm
 
-    import System.RedPitaya.Fpga
-    import System.RedPitaya.Arm
-
-    main = withOpenFpga (setLed 0x55) 
-
+main = withOpenFpga (setLed 0x55) 
+```
 
 
 Inspiration for last example is technology from 1970s https://www.youtube.com/watch?v=Hm3AFz4wrw4 
@@ -38,6 +39,7 @@ Inspiration for last example is technology from 1970s https://www.youtube.com/wa
 
 ``` {.haskell}
 import System.RedPitaya.Fpga
+import System.RedPitaya.Tcp
 import Control.Concurrent (threadDelay)
 import Data.Bits
 import Control.Monad.IO.Class (liftIO)
@@ -52,7 +54,6 @@ rpIp = "10.42.0.219"
 rpPort = 4242
 
 main = runRemoteRp rpIp rpPort (knightRider 0)
-
 ```
 
 For full interface and fuctions available for contolling and acessing registries,
