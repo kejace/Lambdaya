@@ -20,7 +20,7 @@ main = runRemoteRp rpIp rpPort (setLed 0x55)
 ```
 
 `runRemoteRp` is function that execute `FpgaSetGet` over network. If you dont have
-arm-ghc compiler available, you can use compiled binaries [bin/server]((https://github.com/RedPitaya/RedPitaya/blob/master/bin/server)
+arm-ghc compiler available, you can use compiled binaries [bin/server](https://github.com/ra1u/Lambdaya/blob/master/bin/server?raw=true)
 and run them on RedPitaya.
 
 Lambdaya libraray also enables execution of same code natively trough `withOpenFpga`
