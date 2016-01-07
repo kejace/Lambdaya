@@ -1,4 +1,11 @@
 binary for redpitaya
 
+# old-system binary for running on gnueabi
+# binar renamed to server-armel
+
 arm-unknown-linux-gnueabi-ghc -O3 server.hs
 arm-linux-gnueabi-strip  server
+
+# latest system based on gnueabihf
+arm-unknown-linux-gnueabihf-ghc -O3 server.hs
+arm-linux-gnueabihf-strip  server
