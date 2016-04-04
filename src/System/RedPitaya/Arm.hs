@@ -33,8 +33,8 @@ import Foreign.Ptr
 type FpgaPtr = Ptr ()
 
 -- | FpgaSetGet get for running on Arm
-type FpgaArm = ReaderT FpgaPtr IO
-
+newtype FpgaArm a = FpgaArm (ReaderT FpgaPtr IO a)
+    deriving(Functor, Applicative,Monad,MonadIO,MonadReader FpgaPtr)
 
 #ifdef arm_HOST_ARCH
 
