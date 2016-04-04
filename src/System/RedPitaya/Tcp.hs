@@ -122,7 +122,7 @@ processPacket =  handle
     handle (WriteSingle addr reg) = lift $ ( fpgaSet (frInt addr) reg )
     handle (WriteArray len addr arr) = lift $ fpgaSetArray (frInt addr) arr
     handle (ReadSingle addr ) =   lift (fpgaGet (frInt addr)) >>= (yield . RespSingle )
-    handle (ReadArray len addr ) =  lift (fpgaGetArray (frInt len)  (frInt addr) ) 
+    handle (ReadArray len addr ) =  lift (fpgaGetArray (frInt addr) (frInt len)) 
                                              >>= yield . RespArray len
     handle _ = yield Error
 
