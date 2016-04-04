@@ -123,7 +123,7 @@ class (Monad m) => FpgaSetGet m where
     -- user can provide only one set and one get if requred
     fpgaGet off = fmap head $ fpgaGetArray off 1
     fpgaSet off v = fpgaSetArray off [v]
-    fpgaGetArray off len = sequence $ map fpgaGet [off, off+4 .. (off + (4*len))]
+    fpgaGetArray off len = sequence $ map fpgaGet $ take len [off, off+4 .. ]
     fpgaSetArray off d = sequence_ $ zipWith fpgaSet [off, off+4 .. ] d
 
 
