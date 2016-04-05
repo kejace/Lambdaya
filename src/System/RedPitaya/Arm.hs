@@ -31,15 +31,16 @@ import Foreign.Ptr
 
 
 type FpgaPtr = Ptr ()
+type FA a = ReaderT FpgaPtr IO a
 
 -- | FpgaSetGet get for running on Arm
-newtype FpgaArm a = FpgaArm (ReaderT FpgaPtr IO a)
+newtype FpgaArm a = FpgaArm {unFA :: FA a}
     deriving(Functor, Applicative,Monad,MonadIO,MonadReader FpgaPtr)
 
 #ifdef arm_HOST_ARCH
 
 runArm :: FpgaArm a -> FpgaPtr -> IO a
-runArm  = runReaderT
+runArm  = runReaderT . unFA
 
 
 instance FpgaSetGet FpgaArm where 
