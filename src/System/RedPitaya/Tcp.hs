@@ -64,9 +64,11 @@ instance Binary SimpleProt where
                        >> putWord32be a
 
   put (ReadArray len addr) = putWord32be cReadArray 
+                             >> putWord32be len
                              >> putWord32be addr
 
-  put (RespSingle reg) = putWord32be cRespSingle >> putWord32be reg
+  put (RespSingle reg) = putWord32be cRespSingle 
+                      >> putWord32be reg
 
   put (RespArray len arr) = putWord32be cRespArray
                             >> putWord32be len
